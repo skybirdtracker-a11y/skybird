@@ -241,19 +241,23 @@ def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:
             headers = {"Authorization": f"Bearer {tok}"} if tok else {}
         except DataError:
             pass
-        for h in todo[:150]:
+        for h in todo[:100]:   # at most 100 new aircraft a day (each one is a request)
             try:
                 r = session.get(f"{API}/metadata/aircraft/icao/{h}", headers=headers, timeout=20)
-                if r.status_code != 200:
-                    cache[h] = {"cls": None, "family": None}
+                if r.status_code == 429:
+                    break        # daily allowance used up: stop, and look the rest up another day
+                if r.status_code == 404:
+                    cache[h] = {"cls": None, "family": None}   # OpenSky doesn't know this one
                     continue
+                if r.status_code != 200:
+                    continue     # a hiccup: don't remember it as "unknown"; try again next time
                 d = r.json() or {}
                 ac = (d.get("icaoAircraftClass") or d.get("icaoaircraftclass") or "").upper()
                 cls = "heli" if ac.startswith(("H", "G")) else "jet" if ac.endswith("J") else \
                       "prop" if ac.endswith(("P", "T")) else None
                 cache[h] = {"cls": cls, "family": family(d.get("model"), d.get("manufacturerName"))}
             except Exception:
-                cache[h] = {"cls": None, "family": None}
+                continue
         try:
             path.write_text(json.dumps(cache), encoding="utf-8")
         except OSError:

@@ -1,0 +1,75 @@
+# SkyBird daily posts: makes the 4 videos in the cloud each morning and schedules
+# them in Buffer at 9 / 11 / 1 / 6 Central. Your PC can be off.
+# Setup steps: CLOUD-SETUP.md. Keys go in Settings → Secrets and variables → Actions.
+name: SkyBird daily posts
+
+on:
+  schedule:
+    # GitHub runs on UTC. 12:00 UTC = 7 AM Central in summer, 6 AM in winter.
+    - cron: "0 12 * * *"
+    # Backup an hour later in case GitHub skipped or delayed the first one.
+    # It does nothing if the morning's posts are already scheduled.
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Test run: make the videos but schedule nothing in Buffer"
+        type: boolean
+        default: false
+      force:
+        description: "Run again even if today's posts were already scheduled"
+        type: boolean
+        default: false
+
+concurrency:
+  group: skybird
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Restore SkyBird's memory (aircraft types, tag history)
+        uses: actions/cache/restore@v4
+        with:
+          path: cloud/data
+          key: skybird-data-${{ github.run_id }}
+          restore-keys: skybird-data-
+
+      - name: Make the videos and schedule them in Buffer
+        env:
+          OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
+          OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: >
+          python -m skybird --config cloud/config.toml cloud-run
+          ${{ inputs.force && '--force' || '' }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Save SkyBird's memory
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cloud/data
+          key: skybird-data-${{ github.run_id }}
+
+      - name: Keep today's videos for 3 days (download them from this run's page)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skybird-videos-${{ github.run_number }}
+          path: cloud/videos/*.mp4
+          retention-days: 3
+          if-no-files-found: ignore

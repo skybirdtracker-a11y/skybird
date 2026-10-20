@@ -61,6 +61,8 @@ def plan(cfg: Config, day, now: datetime, only: list[str] | None = None, at: str
     times an hour apart, the first ~10 minutes from now. Past the last post time = skipped.
     `only` limits it to some posts; `at` ("18:30") sets the time for them (today)."""
     cutoff = datetime.combine(now.date(), cfg.last_post_time, tzinfo=cfg.tz)
+    if at:   # a time you picked yourself is allowed after the usual last post time
+        cutoff = datetime.combine(now.date(), datetime.max.time(), tzinfo=cfg.tz)
     out, prev = {}, None
     for slot in sorted(cfg.slots, key=lambda s: s.time):
         if only and slot.key not in only:
@@ -72,7 +74,7 @@ def plan(cfg: Config, day, now: datetime, only: list[str] | None = None, at: str
             want = engine.scheduled_at(cfg, day, slot.time)
         else:   # remaking an earlier day's post: today, at its usual time
             want = engine.scheduled_at(cfg, now.date(), slot.time)
-        t = max(want, now + timedelta(minutes=10))
+        t = max(want, now + timedelta(minutes=5 if at else 10))
         if prev is not None:
             t = max(t, prev + cfg.catchup_gap)
         if t > cutoff:
@@ -196,6 +198,8 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     eppley = _eppley_counts(cfg, today)
     if eppley:
         body += f"\n\nEppley: {eppley}"
+        if os.environ.get("GITHUB_ACTIONS"):   # shows on the run's page (Annotations)
+            print(f"::notice title=Eppley flights::{eppley}")
     if st.get("incomplete"):
         body += "\n\n⚠️ " + st["incomplete"] + " Check the videos in Buffer; delete them if they look wrong."
     if problems:

@@ -94,13 +94,15 @@ def _tmpfiles(r):
 
 
 # Tried in order until one works. (name, url, form data, file field, reply parser)
+# uguu.se first: in Oct 2026 it was the only one accepting uploads from GitHub's
+# servers (catbox blocks them, 0x0.st closed uploads, litterbox timed out).
 # How long each keeps the file (hours); scheduled posts skip ones that expire too soon.
 LIFE_HOURS = {"litterbox.catbox.moe": 72, "catbox.moe": 10 ** 6, "0x0.st": 720, "uguu.se": 3, "tmpfiles.org": 1}
 HOSTS = [
+    ("uguu.se", "https://uguu.se/upload", {}, "files[]", _uguu),
     ("litterbox.catbox.moe", LITTERBOX, {"reqtype": "fileupload", "time": "72h"}, "fileToUpload", _litterbox),
     ("catbox.moe", "https://catbox.moe/user/api.php", {"reqtype": "fileupload"}, "fileToUpload", _litterbox),
     ("0x0.st", "https://0x0.st", {}, "file", _litterbox),
-    ("uguu.se", "https://uguu.se/upload", {}, "files[]", _uguu),
     ("tmpfiles.org", "https://tmpfiles.org/api/v1/upload", {}, "file", _tmpfiles),
 ]
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -173,7 +175,7 @@ def host_video(video: Path, session=requests, skip: tuple[str, ...] = (), min_ho
         try:
             with open(video, "rb") as f:
                 r = session.post(url, data=data, files={field: (video.name, f, "video/mp4")},
-                                 headers={"User-Agent": UA}, timeout=900)
+                                 headers={"User-Agent": UA}, timeout=(15, 180))
             link = parse(r) if r.status_code == 200 else ""
         except (requests.RequestException, ValueError, AttributeError, IndexError) as e:
             errors.append(f"{name}: {_net_why(e)}")

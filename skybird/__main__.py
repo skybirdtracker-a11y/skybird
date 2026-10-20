@@ -82,8 +82,20 @@ def main(argv=None):
             check_hosts()
             return
         only = [x.strip() for x in a.only.replace("all posts", "").split(",") if x.strip()] or None
-        run(cfg, force=a.force, only=only, day=date.fromisoformat(a.day) if a.day.strip() else None,
-            at=a.at.strip() or None)
+        import os
+        import traceback
+        try:
+            run(cfg, force=a.force, only=only, day=date.fromisoformat(a.day) if a.day.strip() else None,
+                at=a.at.strip() or None)
+        except BaseException as e:   # show the reason on the GitHub run page (Annotations)
+            if os.environ.get("GITHUB_ACTIONS") and not (isinstance(e, SystemExit) and not e.code):
+                last = traceback.format_exception_only(type(e), e)[-1].strip().replace("\n", " ")
+                where = traceback.extract_tb(e.__traceback__)[-1] if e.__traceback__ else None
+                print(f"::error title=SkyBird stopped::{last[:900]}" + (f" (at {where.filename.split('/')[-1]}:{where.lineno})" if where else ""))
+                from . import notify
+                notify.send(cfg, "SkyBird (cloud): the morning run failed", last[:400], priority="high",
+                            click="https://github.com/" + os.environ.get("GITHUB_REPOSITORY", "") + "/actions")
+            raise
     elif a.cmd == "prepare":
         engine.prepare(cfg, _date(cfg, a.date), force=a.force, render=not a.no_render)
     elif a.cmd == "approve":

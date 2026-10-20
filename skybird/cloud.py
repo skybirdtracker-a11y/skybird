@@ -254,7 +254,9 @@ def test_notify(cfg: Config) -> bool:
                      "If you see this, SkyBird's phone notifications work. Tap to open Buffer.", click=BUFFER_APP)
     raw = str(cfg.section("notify").get("ntfy_topic") or "")
     tidy = " (quotes or a link were removed from it)" if raw.strip() != topic else ""
+    bad = notify.topic_problem(topic) if topic else ""
     line = (f"Topic set: {'yes, ' + str(len(topic)) + ' characters' + tidy if topic else 'NO - add the NTFY_TOPIC secret'}. "
+            + (f"Problem with it: {bad}. " if bad else "") +
             f"Sent: {'yes' if ok else 'no'} - {notify.LAST['result']}")
     print(line)
     if os.environ.get("GITHUB_ACTIONS"):

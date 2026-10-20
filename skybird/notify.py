@@ -18,7 +18,18 @@ LAST = {"result": ""}   # what happened to the last notification (for the test b
 def topic_of(cfg: Config) -> str:
     """The topic, without quotes or a pasted https://ntfy.sh/ in front."""
     t = str(cfg.section("notify").get("ntfy_topic") or "").strip().strip('"\'').strip()
-    return t.rsplit("/", 1)[-1] if t.startswith("http") else t
+    if "/" in t:            # "ntfy.sh/my-topic" or "https://ntfy.sh/my-topic" -> "my-topic"
+        t = t.rstrip("/").rsplit("/", 1)[-1]
+    return t.strip()
+
+
+def topic_problem(topic: str) -> str:
+    """'' if ntfy accepts this topic name, else what's wrong (without showing the topic)."""
+    import re
+    if re.fullmatch(r"[-_A-Za-z0-9]{1,64}", topic):
+        return ""
+    odd = sorted({"spaces" if c.isspace() else repr(c) for c in topic if not re.match(r"[-_A-Za-z0-9]", c)})
+    return "it contains characters ntfy doesn't allow: " + ", ".join(odd)
 
 
 def send(cfg: Config, title: str, message: str, *, priority: str = "default", path: str = "/",

@@ -186,6 +186,9 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
         if oks:
             scheduled.append(f"{when} {slot.title} ({', '.join(oks)})")
         problems += [f"{slot.title} {b}" for b in bad]
+        if os.environ.get("GITHUB_ACTIONS"):   # readable on the run's page (Annotations)
+            for b in bad:
+                print(f"::warning title={slot.title}::{b[:900]}")
         log(cfg, f"{today} {slot.title}: scheduled for {when} on {', '.join(oks) or 'nothing'}" +
             (f"; failed {'; '.join(bad)}" if bad else ""))
 
@@ -212,3 +215,27 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     if not scheduled:
         raise SystemExit(title)
     return {"scheduled": scheduled, "problems": problems}
+
+
+def check_hosts(session=None) -> list[str]:
+    """Try each free video host with a small test file; one line per host."""
+    import tempfile
+    import requests
+    from .publishers import buffer
+    s = session or requests.Session()
+    out = []
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "skybird-host-test.mp4"
+        f.write_bytes(os.urandom(512 * 1024))
+        for name, *_ in buffer.HOSTS:
+            others = tuple(n for n, *_ in buffer.HOSTS if n != name)
+            try:
+                url, _ = buffer.host_video(f, s, skip=others)
+                line = f"{name}: OK {url}"
+            except Exception as e:
+                line = f"{name}: {str(e)[:300]}"
+            out.append(line)
+            print(line)
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(f"::notice title=Video host::{line}")
+    return out

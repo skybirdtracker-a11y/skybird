@@ -34,6 +34,10 @@ on:
         description: "Which day's post to remake, YYYY-MM-DD (blank = today's, showing yesterday's flights)"
         type: string
         default: ""
+      check_hosts:
+        description: "Only test which video hosts accept uploads (makes no videos, posts nothing)"
+        type: boolean
+        default: false
       post_time:
         description: "Post time today, HH:MM in 24h Central, e.g. 19:30 (blank = its usual time)"
         type: string
@@ -95,7 +99,7 @@ jobs:
           only="${ONLY%% *}"; [ "$only" = "every" ] && only=""
           python -m skybird --config cloud/config.toml cloud-run \
             ${{ inputs.force && '--force' || '' }} ${{ inputs.dry_run && '--dry-run' || '' }} \
-            --only "$only" --day "$DAY" --at "$POST_TIME"
+            --only "$only" --day "$DAY" --at "$POST_TIME" ${{ inputs.check_hosts && '--check-hosts' || '' }}
 
       - name: Save SkyBird's memory
         if: always()

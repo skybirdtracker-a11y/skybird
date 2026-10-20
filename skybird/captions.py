@@ -178,7 +178,7 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
         dyk = (f"Did you know? Eppley's busiest hour yesterday was {busiest_hour}. If you've ever wondered why "
                "security was packed, now you know. ✈️") if busiest_hour else \
               f"Did you know? Eppley handled {n} airline flights yesterday, about one every few minutes. ✈️"
-        guess = "Guess before you watch: what was Eppley's #1 destination yesterday? 👇 Answer at the end of the video."
+        guess = "Guess before you watch: what was Eppley's top destination yesterday? 👇 Answer at the end of the video."
     elif slot_key == "private":
         dyk = f"Did you know? {n} private jets moved through the Omaha metro yesterday."
         if ftype.get("name"):
@@ -227,7 +227,10 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
         first = "local_tie_in"
     else:
         cycle = [i for i in ROTATION if i in ids]
-        first = cycle[post_day.toordinal() % len(cycle)]
+        # offset by post, so the four posts on one day don't all use the same style
+        from .config import SLOT_ORDER
+        shift = SLOT_ORDER.index(slot_key) if slot_key in SLOT_ORDER else 0
+        first = cycle[(post_day.toordinal() + shift) % len(cycle)]
     opts.sort(key=lambda o: o["id"] != first)
     for o in opts:
         o["cta"] = cta[0] if cta else ""

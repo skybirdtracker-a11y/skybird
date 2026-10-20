@@ -2,9 +2,9 @@
 
 GitHub runs SkyBird for free every morning:
 
-1. ~7 AM Central (6 AM in winter) it fetches yesterday's flights and makes the 4 videos.
+1. At about 3:35 AM Central, right after the flight day ends (3:30 AM to 3:29 AM), it fetches the previous day's flights and makes the 4 videos.
 2. It schedules them in your **Buffer** queue for 9 AM, 11 AM, 1 PM and 6 PM, with the day's captions, hashtags and @tags.
-3. Your phone gets a notification (ntfy). Open the **Buffer app** to look over, edit or delete any post before it goes out.
+3. When it's done (about 3:45–4 AM) your phone gets a notification (ntfy). Open the **Buffer app** to look over, edit or delete any post before it goes out.
 
 Setup takes about 30 minutes, once.
 

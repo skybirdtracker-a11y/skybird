@@ -1,15 +1,17 @@
-# SkyBird daily posts: makes the 4 videos in the cloud each morning and schedules
+# SkyBird daily posts: makes the 4 videos in the cloud at ~3:35 AM and schedules
 # them in Buffer at 9 / 11 / 1 / 6 Central. Your PC can be off.
 # Setup steps: CLOUD-SETUP.md. Keys go in Settings → Secrets and variables → Actions.
 name: SkyBird daily posts
 
 on:
   schedule:
-    # GitHub runs on UTC. 12:00 UTC = 7 AM Central in summer, 6 AM in winter.
-    - cron: "0 12 * * *"
+    # About 3:35 AM Central, right after the flight day (3:30 AM to 3:29 AM) ends.
+    # GitHub runs on UTC: 8:35 UTC = 3:35 AM in summer (CDT); in winter (CST) that's
+    # 2:35 AM, which SkyBird skips as too early, and the 9:35 UTC run does it instead.
+    - cron: "35 8 * * *"
     # Backup an hour later in case GitHub skipped or delayed the first one.
-    # It does nothing if the morning's posts are already scheduled.
-    - cron: "0 13 * * *"
+    # It does nothing if the day's posts are already scheduled.
+    - cron: "35 9 * * *"
   workflow_dispatch:
     inputs:
       dry_run:

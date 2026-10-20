@@ -109,6 +109,10 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
 
     st = load_state(cfg, today)
     before = st
+    # The flight day runs to 3:29 AM: a scheduled run before then would miss the end of it.
+    if not force and not only and os.environ.get("GITHUB_EVENT_NAME") == "schedule" and now.time() < cfg.day_start:
+        log(cfg, f"{now:%I:%M %p}: yesterday's flight day isn't over until {cfg.day_start:%I:%M %p}; the later run does it")
+        return {"skipped": "too early"}
     if st and not force and not only and st.get("cloud_done"):
         log(cfg, f"{today}: already scheduled earlier today; nothing to do")
         return {"skipped": "already done"}
@@ -207,7 +211,7 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
         body += "\n\n⚠️ " + st["incomplete"] + " Check the videos in Buffer; delete them if they look wrong."
     if problems:
         body += "\n\nProblems:\n" + "\n".join(p[:300] for p in problems[:6])
-    body += "\n\nReview, edit or delete them in the Buffer app."
+    body += "\n\nReview them in the Buffer app (Queue): edit or delete anything you don't want before it posts."
     title = "SkyBird (cloud): " + (f"{len(scheduled)} posts scheduled" if scheduled else "nothing scheduled")
     notify.send(cfg, title + (" [dry run]" if cfg.dry_run else ""), body,
                 priority="high" if problems or not scheduled else "default", click=BUFFER_APP)

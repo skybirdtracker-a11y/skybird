@@ -1,0 +1,516 @@
+# SkyBird - Omaha event calendar  (Oct 2026 – Dec 2027)
+#
+# On any day inside an event (or its lead-up window) the auto-poster:
+#   • adds the event's caption hook to that day's captions
+#   • pre-checks the event hashtags
+#   • shows the "bonus post" ideas as a banner in the approval dashboard
+#
+# Fields:
+#   start / end     dates the event affects posts (inclusive)
+#   confirmed       false = date estimated from the usual pattern; re-check before then
+#   priority        higher wins when two events overlap (1–5)
+#   lead_days       days before `start` to run the teaser (`lead_hook`)
+#   slots           which posts get the hook: "all_posts" or any of commercial/private/military/all
+#   hook            one line added to captions during the event
+#   bonus_posts     ideas for extra posts (you make those by hand or with a custom render)
+#   news_tag        true = a big "who's in town" event: the 6 PM post may tag ONE local news
+#                   outlet (WOWT, KMTV, KETV or the World-Herald). Never on ordinary days.
+#
+# Add an event: copy a block, change the fields. The dashboard picks it up on the next build.
+
+# ============================== 2026 ==============================
+
+[[event]]
+name = "Huskers vs Maryland (Lincoln)"
+start = 2026-10-02
+end = 2026-10-04
+confirmed = true
+priority = 2
+slots = ["private", "all"]
+note = "Husker home weekend in Lincoln. Most private jets land at LNK, not OMA."
+hook = "🏈 Husker game weekend in Lincoln. Plenty of fans flew through Eppley."
+hashtags = ["#GBR", "#Huskers", "#HuskerFootball"]
+
+[[event]]
+name = "Huskers vs Indiana (Lincoln)"
+start = 2026-10-09
+end = 2026-10-11
+confirmed = true
+priority = 2
+slots = ["private", "all"]
+note = "Husker home weekend."
+hook = "🏈 Husker game weekend: where are the fans flying in from?"
+hashtags = ["#GBR", "#Huskers", "#HuskerFootball"]
+
+[[event]]
+name = "Halloween + Huskers vs Washington"
+start = 2026-10-30
+end = 2026-11-01
+confirmed = true
+priority = 2
+slots = ["all_posts"]
+note = "Husker home game Sat Oct 31 in Lincoln. Most private jets land at LNK, not OMA; some fans still fly commercial into OMA."
+hook = "🎃 Halloween weekend + a Husker home game in Lincoln. Lots of red in the terminal at Eppley."
+hashtags = ["#GBR", "#Huskers", "#Halloween"]
+bonus_posts = ["'Spookiest' flight path of the week (the weirdest route shape)"]
+
+[[event]]
+name = "Creighton basketball home opener (CHI Health Center)"
+news_tag = true
+start = 2026-11-02
+end = 2026-11-02
+confirmed = true
+priority = 3
+slots = ["commercial", "all"]
+note = "First home game of the season vs Kansas City. Fans back downtown; check the date on gocreighton.com."
+hook = "🏀 Creighton basketball is back at CHI Health Center tonight."
+hashtags = ["#GoJays", "#Creighton", "#BigEast"]
+
+[[event]]
+name = "Veterans Day"
+start = 2026-11-11
+end = 2026-11-11
+confirmed = true
+priority = 4
+slots = ["military", "all"]
+note = "Watch for flyovers. Military post leads with a thank-you."
+hook = "🇺🇸 Happy Veterans Day. Thank you to everyone who served, including the crews at Offutt."
+hashtags = ["#VeteransDay", "#ThankAVeteran", "#OffuttAFB"]
+bonus_posts = ["Veterans Day tribute: every military aircraft seen over Omaha this week"]
+
+[[event]]
+name = "Huskers vs Ohio State (Lincoln)"
+start = 2026-11-20
+end = 2026-11-22
+confirmed = true
+priority = 4
+lead_days = 2
+slots = ["commercial", "all"]
+note = "Biggest home game left. Private jets mostly land at Lincoln (LNK); OMA sees extra commercial fans Fri + Sun."
+lead_hook = "🏈 Ohio State comes to Lincoln this weekend. Plenty of fans will fly through Eppley."
+hook = "🏈 Ohio State weekend in Lincoln. Lots of fans flew in and out through Eppley."
+hashtags = ["#GBR", "#Huskers", "#NEBvsOSU", "#HuskerFootball"]
+bonus_posts = ["If your data covers LNK: 'Lincoln's airport was the busy one this weekend' post"]
+
+[[event]]
+name = "Thanksgiving travel rush"
+start = 2026-11-24
+end = 2026-11-29
+confirmed = true
+priority = 4
+slots = ["commercial", "all"]
+note = "Wed 11/25 is the busiest travel day; Sun 11/29 is the return peak."
+hook = "🦃 Thanksgiving travel week at Eppley. Where is Omaha headed for the holiday?"
+lead_hook = "🦃 Thanksgiving travel is coming. Busiest day at OMA: Wednesday."
+lead_days = 3
+hashtags = ["#Thanksgiving", "#HolidayTravel", "#ThanksgivingTravel"]
+bonus_posts = ["Wed 11/25: 'Busiest day of the year' post (morning)", "Sun 11/29: 'Everyone's coming home' arrivals map"]
+
+[[event]]
+name = "Holiday Lights Festival"
+start = 2026-11-26
+end = 2027-01-03
+confirmed = false
+priority = 1
+slots = ["all"]
+note = "Downtown Omaha lights; the lighting ceremony is about Sat 11/28."
+hook = "✨ Holiday Lights Festival season downtown."
+hashtags = ["#HolidayLightsFestival", "#OmahaHolidays"]
+
+[[event]]
+name = "Creighton vs Nebraska (CHI Health Center)"
+start = 2026-12-05
+end = 2026-12-05
+confirmed = true
+priority = 2
+slots = ["all"]
+note = "In-state basketball rivalry."
+hook = "🏀 Creighton vs Nebraska tonight at CHI Health Center."
+hashtags = ["#GoJays", "#Creighton", "#Huskers"]
+
+[[event]]
+name = "Creighton vs Gonzaga (CHI Health Center)"
+news_tag = true
+start = 2026-12-11
+end = 2026-12-12
+confirmed = true
+priority = 2
+slots = ["private", "all"]
+note = "Big non-conference game; Gonzaga's team charter and traveling fans."
+hook = "🏀 Gonzaga is in town. Look for the team charter on the map."
+hashtags = ["#GoJays", "#Creighton", "#Gonzaga"]
+bonus_posts = ["Spot the team charter: Gonzaga's flight path into OMA"]
+
+[[event]]
+name = "Creighton vs Villanova (CHI Health Center)"
+start = 2026-12-18
+end = 2026-12-19
+confirmed = true
+priority = 2
+slots = ["commercial", "all"]
+note = "Big East home game. Visiting team charter usually lands the day before."
+hook = "🏀 Villanova is in town to play Creighton. Their team charter landed at Eppley."
+hashtags = ["#GoJays", "#Creighton", "#Villanova", "#BigEast"]
+bonus_posts = ["'Team charter landed' post the day before the game (counts only, no tail)"]
+
+[[event]]
+name = "Creighton vs Marquette (CHI Health Center)"
+start = 2026-12-30
+end = 2026-12-31
+confirmed = true
+priority = 2
+slots = ["commercial", "all"]
+note = "New Year's Eve game during holiday travel, so traffic stacks on an already busy week."
+hook = "🏀 Creighton hosts Marquette on New Year's Eve, on top of holiday travel at Eppley."
+hashtags = ["#GoJays", "#Creighton", "#Marquette", "#BigEast"]
+
+[[event]]
+name = "Wright Brothers Day"
+start = 2026-12-17
+end = 2026-12-17
+confirmed = true
+priority = 2
+slots = ["all"]
+note = "123 years since the first powered flight (1903)."
+hook = "✈️ 123 years ago today the Wright brothers flew 120 feet. Omaha flew a lot farther today."
+hashtags = ["#WrightBrothersDay", "#AvGeek"]
+bonus_posts = ["Fun-fact carousel: 1903 vs today's longest flight out of OMA"]
+
+[[event]]
+name = "Christmas travel"
+start = 2026-12-18
+end = 2026-12-27
+confirmed = true
+priority = 3
+slots = ["commercial", "all"]
+note = "Holiday travel peak; Christmas is Friday."
+hook = "🎄 Holiday travel season at Eppley. Where is Omaha going for Christmas?"
+hashtags = ["#HolidayTravel", "#ChristmasTravel"]
+
+[[event]]
+name = "NORAD Tracks Santa"
+start = 2026-12-24
+end = 2026-12-24
+confirmed = true
+priority = 5
+slots = ["all_posts"]
+note = "The most shareable post of the year. NORAD's Santa tracker plus the 6 PM 'All planes' post."
+hook = "🎅 Keep your eyes on the sky tonight: one unregistered aircraft is expected over Omaha. 🦌"
+hashtags = ["#NORADSanta", "#SantaTracker", "#ChristmasEve"]
+bonus_posts = ["6 PM post: add a joke 'Santa' route to the All-planes map", "Story: 'Our radar says Santa is 2 hours out'"]
+
+[[event]]
+name = "New Year's travel"
+start = 2026-12-30
+end = 2027-01-03
+confirmed = true
+priority = 3
+slots = ["commercial", "all"]
+note = "New Year's Day is Friday; return peak Sat–Sun."
+hook = "🎆 New Year's travel: Omaha's flights to ring in 2027."
+hashtags = ["#NewYear", "#HolidayTravel"]
+bonus_posts = ["Jan 1: '2026 in the sky' year-in-review (total flights, top cities, busiest day)"]
+
+# ============================== 2027 ==============================
+
+[[event]]
+name = "Creighton vs UConn (CHI Health Center)"
+news_tag = true
+start = 2027-01-02
+end = 2027-01-03
+confirmed = true
+priority = 3
+lead_days = 2
+slots = ["commercial", "private", "all"]
+note = "Biggest Big East home draw. Team charter plus traveling fans."
+lead_hook = "🏀 UConn comes to Omaha this weekend. We'll watch for the team charter."
+hook = "🏀 UConn vs Creighton weekend. Look for the team charter on the map."
+hashtags = ["#GoJays", "#Creighton", "#UConn", "#BigEast"]
+bonus_posts = ["'Spot the charter' post: UConn's flight path into OMA (no tail)"]
+
+[[event]]
+name = "Creighton vs St. John's (CHI Health Center)"
+start = 2027-01-15
+end = 2027-01-16
+confirmed = true
+priority = 2
+slots = ["commercial", "all"]
+hook = "🏀 St. John's is in town to play Creighton. Their charter landed at Eppley."
+hashtags = ["#GoJays", "#Creighton", "#StJohns", "#BigEast"]
+
+[[event]]
+name = "Creighton vs Georgetown (CHI Health Center)"
+start = 2027-01-29
+end = 2027-01-30
+confirmed = true
+priority = 1
+slots = ["all"]
+hook = "🏀 Georgetown visits Creighton this weekend."
+hashtags = ["#GoJays", "#Creighton", "#Georgetown", "#BigEast"]
+
+[[event]]
+name = "Creighton vs Xavier (CHI Health Center)"
+start = 2027-02-23
+end = 2027-02-24
+confirmed = true
+priority = 2
+slots = ["commercial", "all"]
+hook = "🏀 Xavier is in town to play Creighton. Their charter landed at Eppley."
+hashtags = ["#GoJays", "#Creighton", "#Xavier", "#BigEast"]
+
+[[event]]
+name = "NSAA State Wrestling (CHI Health Center)"
+start = 2027-02-18
+end = 2027-02-20
+confirmed = true
+priority = 1
+slots = ["all"]
+note = "Mostly drive-in traffic from around Nebraska; small flight effect."
+hook = "🤼 State wrestling is in town at CHI Health Center."
+hashtags = ["#NSAAWrestling"]
+
+[[event]]
+name = "Spring break"
+start = 2027-03-06
+end = 2027-03-28
+confirmed = false
+priority = 2
+slots = ["commercial"]
+note = "Estimated: most schools take a week in mid-March; UNL/UNO around 3/14–3/21."
+hook = "🌴 Spring break season: how many flights to Phoenix, Florida and Vegas today?"
+hashtags = ["#SpringBreak", "#SpringBreak2027"]
+bonus_posts = ["'Spring break scoreboard': PHX vs LAS vs MCO/TPA flight counts"]
+
+[[event]]
+name = "NCAA Men's Basketball 1st/2nd Rounds (Omaha)"
+news_tag = true
+start = 2027-03-18
+end = 2027-03-20
+confirmed = true
+priority = 4
+lead_days = 2
+slots = ["all_posts"]
+note = "Team charters usually land 3/16–3/17. Fans book at the last minute after Selection Sunday."
+lead_hook = "🏀 March Madness is coming to Omaha. We'll be watching the team charters land."
+hook = "🏀 March Madness in Omaha: team charters and fans are flying in."
+hashtags = ["#MarchMadness", "#NCAATournament", "#Omaha"]
+bonus_posts = ["'Which teams flew in?' map: charter origins", "Departure map after each team is knocked out"]
+
+[[event]]
+name = "Berkshire Hathaway Annual Meeting"
+news_tag = true
+start = 2027-04-29
+end = 2027-05-02
+confirmed = true
+priority = 5
+lead_days = 5
+slots = ["all_posts"]
+note = "Biggest private jet event of the year. Meeting Sat 5/1; arrivals Thu–Fri, departures Sat night–Sun. The Friday shopping day and Sunday 5K follow the usual pattern (estimated)."
+lead_hook = "💼 Berkshire weekend is coming. Omaha's private jet count is about to take off."
+hook = "💼 Berkshire Hathaway weekend: the busiest private jet days of the year in Omaha."
+hashtags = ["#BerkshireHathaway", "#BRK", "#BerkshireMeeting", "#Woodstock4Capitalists"]
+bonus_posts = [
+  "Thu + Fri: live 'jets on the ground' count, posted twice daily",
+  "Fri: 'Where are the shareholders flying from?' origin map",
+  "Sun: departure-rush timelapse",
+  "Mon: record recap: most private jets in one day",
+]
+
+[[event]]
+name = "Memorial Day weekend"
+start = 2027-05-28
+end = 2027-05-31
+confirmed = true
+priority = 3
+slots = ["commercial", "military", "all"]
+note = "Monday 5/31. Watch for flyovers."
+hook = "🇺🇸 Memorial Day weekend: honoring those who gave everything."
+hashtags = ["#MemorialDay", "#NeverForget"]
+
+[[event]]
+name = "NCAA Men's College World Series"
+news_tag = true
+start = 2027-06-18
+end = 2027-06-28
+confirmed = true
+priority = 5
+lead_days = 4
+slots = ["all_posts"]
+note = "8 teams' charters plus fans and boosters' jets. Charter origins show who is still alive in the bracket."
+lead_hook = "⚾ The College World Series is almost here. Team charters land this week."
+hook = "⚾ CWS in Omaha: follow the team charters and fan flights."
+hashtags = ["#CWS", "#MCWS", "#RoadToOmaha", "#CollegeWorldSeries"]
+bonus_posts = [
+  "Arrival day: 'All 8 teams' charter paths into OMA'",
+  "After each elimination: 'Heading home' departure map",
+  "Final: the champion's flight home",
+]
+
+[[event]]
+name = "Omaha Summer Arts Festival"
+start = 2027-06-25
+end = 2027-06-27
+confirmed = false
+priority = 1
+slots = ["all"]
+note = "Estimated late-June weekend, often the same weekend as the CWS."
+hook = "🎨 Summer Arts Festival weekend downtown."
+hashtags = ["#SummerArtsFestival"]
+
+[[event]]
+name = "Independence Day"
+start = 2027-07-02
+end = 2027-07-05
+confirmed = true
+priority = 3
+slots = ["all_posts"]
+note = "July 4 is Sunday; the federal holiday is Mon 7/5."
+hook = "🎆 Happy 4th from the skies over Omaha."
+hashtags = ["#July4th", "#IndependenceDay", "#FourthOfJuly"]
+
+[[event]]
+name = "Maha Festival"
+start = 2027-08-06
+end = 2027-08-07
+confirmed = false
+priority = 1
+slots = ["all"]
+note = "Estimated early-August weekend."
+hook = "🎸 Maha Festival weekend in Omaha."
+hashtags = ["#MahaFestival"]
+
+[[event]]
+name = "National Aviation Day"
+start = 2027-08-19
+end = 2027-08-19
+confirmed = true
+priority = 3
+slots = ["all_posts"]
+note = "Orville Wright's birthday. A great day to push follows and shares."
+hook = "✈️ Happy National Aviation Day from Omaha's daily flight tracker."
+hashtags = ["#NationalAviationDay", "#AvGeek"]
+bonus_posts = ["'Omaha aviation by the numbers' carousel (year to date)"]
+
+[[event]]
+name = "FIVB Women's Volleyball World Cup (Omaha matches)"
+news_tag = true
+start = 2027-08-20
+end = 2027-09-05
+confirmed = false
+priority = 3
+slots = ["commercial", "private", "all"]
+note = "The tournament dates are confirmed; Omaha's own match days are not yet. International team charters are possible."
+hook = "🏐 The Volleyball World Cup is in Omaha. The world is flying in."
+hashtags = ["#VolleyballWorldCup", "#VNL", "#Omaha"]
+bonus_posts = ["'International arrivals' map (non-US origins)"]
+
+[[event]]
+name = "Labor Day weekend + State Fair"
+start = 2027-09-03
+end = 2027-09-06
+confirmed = true
+priority = 2
+slots = ["commercial", "all"]
+note = "Labor Day is Mon 9/6. The Nebraska State Fair (Grand Island) ends Labor Day (estimated)."
+hook = "🌽 Labor Day weekend: last big travel weekend of summer."
+hashtags = ["#LaborDay", "#LaborDayWeekend"]
+
+[[event]]
+name = "River City Rodeo"
+start = 2027-09-17
+end = 2027-09-18
+confirmed = false
+priority = 1
+slots = ["all"]
+note = "Estimated mid-September Fri–Sat at CHI Health Center."
+hook = "🤠 River City Rodeo weekend."
+hashtags = ["#RiverCityRodeo"]
+
+[[event]]
+name = "U.S. Air Force Birthday"
+start = 2027-09-18
+end = 2027-09-18
+confirmed = true
+priority = 3
+slots = ["military", "all"]
+note = "80th birthday (founded 1947). A big one for Offutt's followers."
+hook = "🎂 Happy 80th birthday, U.S. Air Force! Here's what flew over Offutt."
+hashtags = ["#USAF80", "#AirForceBirthday", "#OffuttAFB", "#55thWing"]
+bonus_posts = ["'80 years of the Air Force' military flights recap"]
+
+[[event]]
+name = "Omaha Marathon"
+start = 2027-09-26
+end = 2027-09-26
+confirmed = false
+priority = 1
+slots = ["all"]
+note = "Estimated: the last Sunday of September."
+hook = "🏃 Omaha Marathon day. Runners on the ground, planes overhead."
+hashtags = ["#OmahaMarathon"]
+
+[[event]]
+name = "Veterans Day"
+start = 2027-11-11
+end = 2027-11-11
+confirmed = true
+priority = 4
+slots = ["military", "all"]
+hook = "🇺🇸 Happy Veterans Day. Thank you to all who served."
+hashtags = ["#VeteransDay", "#ThankAVeteran", "#OffuttAFB"]
+
+[[event]]
+name = "Thanksgiving travel rush"
+start = 2027-11-23
+end = 2027-11-28
+confirmed = true
+priority = 4
+lead_days = 3
+slots = ["commercial", "all"]
+note = "Wed 11/24 is the busiest travel day; Sun 11/28 is the return peak."
+lead_hook = "🦃 Thanksgiving travel is coming. Busiest day at OMA: Wednesday."
+hook = "🦃 Thanksgiving travel week at Eppley. Where is Omaha headed?"
+hashtags = ["#Thanksgiving", "#HolidayTravel"]
+bonus_posts = ["Wed: 'Busiest day of the year' post", "Sun: 'Everyone's coming home' map"]
+
+[[event]]
+name = "Holiday Lights Festival"
+start = 2027-11-25
+end = 2028-01-02
+confirmed = false
+priority = 1
+slots = ["all"]
+hook = "✨ Holiday Lights Festival season downtown."
+hashtags = ["#HolidayLightsFestival", "#OmahaHolidays"]
+
+[[event]]
+name = "Wright Brothers Day"
+start = 2027-12-17
+end = 2027-12-17
+confirmed = true
+priority = 2
+slots = ["all"]
+hook = "✈️ 124 years since the first powered flight. Here's how far Omaha flew today."
+hashtags = ["#WrightBrothersDay", "#AvGeek"]
+
+[[event]]
+name = "Christmas travel"
+start = 2027-12-17
+end = 2027-12-27
+confirmed = true
+priority = 3
+slots = ["commercial", "all"]
+note = "Christmas is Saturday; the federal holiday is Fri 12/24."
+hook = "🎄 Holiday travel season at Eppley. Where is Omaha going for Christmas?"
+hashtags = ["#HolidayTravel", "#ChristmasTravel"]
+
+[[event]]
+name = "NORAD Tracks Santa"
+start = 2027-12-24
+end = 2027-12-24
+confirmed = true
+priority = 5
+slots = ["all_posts"]
+hook = "🎅 Keep your eyes on the sky tonight: one unregistered aircraft is expected over Omaha. 🦌"
+hashtags = ["#NORADSanta", "#SantaTracker", "#ChristmasEve"]
+bonus_posts = ["6 PM post: joke 'Santa' route on the All-planes map"]

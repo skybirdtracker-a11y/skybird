@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block style %}
+.res{display:flex;flex-direction:column;gap:2px;font-size:13.5px}
+.logbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.logbar input{flex:1;min-width:0;max-width:360px;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:14px system-ui;min-height:44px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{background:transparent;color:var(--muted);border:0;border-right:1px solid var(--line);font:600 14px system-ui;padding:8px 14px;min-height:44px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+.log{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-height:520px;overflow:auto;font:12.5px/1.6 var(--mono)}
+.log div{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
+.log div.err{color:var(--bad)}.log div.good{color:var(--navy)}
+.stats{display:flex;gap:18px;flex-wrap:wrap;font:13px var(--mono);color:var(--muted)}
+.stats b{color:var(--text);font-size:15px}
+@media(max-width:640px){
+  .hist tr:first-child{display:none}
+  .hist tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:12px;border-top:1px solid var(--line)}
+  .hist td{padding:0;border:0}
+  .hist td:nth-child(1){font-weight:600}
+  .hist td:nth-child(2){text-align:right;grid-column:2;grid-row:1}
+  .hist td:nth-child(3){grid-column:1}
+  .hist td:nth-child(4){grid-column:2;grid-row:2;text-align:right}
+  .hist td:nth-child(5){grid-column:1/-1}
+  .hist td:nth-child(6){grid-column:1/-1}
+  .hist td:nth-child(6) .btn{width:100%;justify-content:center}
+}
+{% endblock %}
+{% block main %}
+<div>
+  <h1>History &amp; logs</h1>
+  <p class="lede">Every post from the last {{ history_days }} days and what happened on each platform, plus the full activity log.</p>
+</div>
+<div class="stats">
+  <span><b>{{ counts.posted }}</b> posted</span><span><b>{{ counts.partial + counts.failed }}</b> with failures</span>
+  <span><b>{{ counts.skipped }}</b> skipped</span><span><b>{{ counts.missed }}</b> missed (never approved)</span>
+</div>
+<div class="tablewrap">
+<table class="hist">
+  <tr><th>Date</th><th>Time</th><th>Post</th><th>Status</th><th>Platforms</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td style="white-space:nowrap">{{ r.label }}</td><td class="num">{{ r.time }}</td><td>{{ r.title }}</td>
+    <td><span class="status {{ r.status }}">{{ r.status }}</span></td>
+    <td><div class="res">{% for plat, res in r.results.items() %}
+      {% if res.ok %}<span><span class="plat p-{{plat}}">{{ label[plat] }}</span> <span class="ok">✓</span> {% if res.url %}<a href="{{ res.url }}" target="_blank" rel="noopener">view</a>{% endif %}{% if res.detail %} <span class="muted">{{ res.detail }}</span>{% endif %}</span>
+      {% else %}<span><span class="plat p-{{plat}}">{{ label[plat] }}</span> <span class="bad">✕ {{ res.error[:140] }}</span></span>{% endif %}
+    {% else %}<span class="muted">–</span>{% endfor %}</div></td>
+    <td><a class="btn small" href="/?date={{ r.date }}">Open</a></td>
+  </tr>
+  {% else %}<tr><td colspan="6" class="muted">Nothing yet. Posts show up here after the first morning package is built.</td></tr>{% endfor %}
+</table>
+</div>
+
+<section style="display:flex;flex-direction:column;gap:10px">
+  <h2>Activity log</h2>
+  <div class="logbar">
+    <div class="seg" role="group" aria-label="Log filter">
+      <button type="button" data-f="all" aria-pressed="true">Everything</button>
+      <button type="button" data-f="posts" aria-pressed="false">Posts</button>
+      <button type="button" data-f="err" aria-pressed="false">Problems</button>
+    </div>
+    <input id="q" type="search" placeholder="Search the log" aria-label="Search the log">
+  </div>
+  <div class="log" id="log">{% for l in log_lines %}<div>{{ l }}</div>{% endfor %}</div>
+</section>
+{% endblock %}
+{% block script %}
+<script>
+const lines=[...document.querySelectorAll('#log div')];
+lines.forEach(l=>{const t=l.textContent;if(/FAILED|error|failed/i.test(t))l.classList.add('err');else if(/: OK |approved/.test(t))l.classList.add('good')});
+let f='all';
+function apply(){const q=document.getElementById('q').value.toLowerCase();
+  lines.forEach(l=>{const t=l.textContent.toLowerCase();
+    const okF=f==='all'||(f==='err'&&l.classList.contains('err'))||(f==='posts'&&/ -> /.test(t));
+    l.hidden=!(okF&&(!q||t.includes(q)))})}
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{f=b.dataset.f;document.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed',x===b));apply()}));
+document.getElementById('q').addEventListener('input',apply);
+</script>
+{% endblock %}

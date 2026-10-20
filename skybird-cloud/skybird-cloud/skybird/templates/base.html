@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SkyBird Control</title>
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SkyBird">
+<meta name="theme-color" content="#F6F2E7"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,600;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+:root{color-scheme:light;--bg:#F6F2E7;--card:#FFFFFF;--raised:#E6F3FC;--line:#D9DEE5;--text:#0A2540;--muted:#46607A;--faint:#8193A8;--amber:#014291;--blue:#0999EA;--ok:#1E7B4F;--bad:#C0392B;
+--navy:#014291;--bird:#0999EA;--orange:#F28F23;--mint:#AEE1D8;--oninv:#FFFFFF;
+--ig:#d55181;--fb:#2a78d6;--tt:#c98500;
+--mono:'JetBrains Mono',ui-monospace,monospace;--display:'Archivo',system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 'Archivo',system-ui,-apple-system,Segoe UI,sans-serif}
+a{color:var(--navy)}
+header{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.bar{max-width:1180px;margin:0 auto;padding:10px 16px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;gap:8px;align-items:center;font:italic 900 22px/1 var(--display);text-decoration:none;color:var(--navy)}
+.brand .om{color:var(--bird)}
+.spacer{flex:1}
+.updbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border:1px solid var(--orange);background:#FFF6EC;border-radius:12px;padding:10px 14px}
+.ver{font:600 11px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 7px;white-space:nowrap}
+.pill{font-family:var(--mono);font-size:12px;letter-spacing:1px;padding:4px 8px;border-radius:6px;border:1px solid var(--line);color:var(--muted);text-transform:uppercase;white-space:nowrap}
+.pill.dry{color:var(--amber);border-color:var(--amber)}.pill.live{color:var(--ok);border-color:var(--ok)}.pill.paused{color:var(--bad);border-color:var(--bad)}
+nav{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+nav a{font:600 14px system-ui;color:var(--muted);text-decoration:none;padding:12px 12px 11px;border-bottom:2px solid transparent;white-space:nowrap}
+nav a[aria-current="page"]{color:var(--text);border-color:var(--amber)}
+nav a .n{font:600 11px var(--mono);background:var(--orange);color:var(--text);border-radius:999px;padding:1px 6px;margin-left:4px}
+main{max-width:1180px;margin:0 auto;padding:20px 16px 60px;display:flex;flex-direction:column;gap:20px}
+h1{font:italic 900 clamp(32px,6vw,44px)/1 var(--display);margin:0;color:var(--navy)}
+h2{font:italic 900 24px/1.05 var(--display);margin:0;color:var(--navy)}
+.lede{color:var(--muted);margin:4px 0 0;max-width:70ch}
+.lbl{font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+.btn{font:600 15px system-ui;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:10px 16px;cursor:pointer;min-height:44px;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn.small{min-height:36px;padding:6px 12px;font-size:14px}
+.btn.big{font-size:17px;padding:13px 22px}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--bird);outline-offset:2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.status{font-family:var(--mono);font-size:11.5px;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--raised);color:var(--muted);white-space:nowrap}
+.status.approved{background:var(--navy);color:#fff}.status.posted{background:var(--ok);color:#fff}
+.status.partial,.status.failed{background:var(--bad);color:#fff}.status.posting{background:var(--navy);color:#fff}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th{font:600 11px var(--mono);letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.muted{color:var(--muted)}
+.plat{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.plat::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--c,var(--muted))}
+.p-instagram{--c:var(--ig)}.p-facebook{--c:var(--fb)}.p-tiktok{--c:var(--tt)}
+.switch{position:relative;display:inline-flex;align-items:center;gap:10px;cursor:pointer;min-height:44px}
+.switch input{appearance:none;width:46px;height:26px;border-radius:999px;background:#C5CFDA;position:relative;margin:0;cursor:pointer;flex:none;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s}
+.switch input:checked{background:var(--ok)}
+.switch input:checked::after{transform:translateX(20px)}
+.toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;font-weight:600;z-index:9}
+.empty{text-align:center;padding:48px 16px;border:1px dashed var(--line);border-radius:14px;color:var(--muted)}
+.empty h2{color:var(--text);margin-bottom:8px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+{% block style %}{% endblock %}
+</style></head>
+<body>
+<header>
+  <div class="bar">
+    <a class="brand" href="/">
+      <svg width="34" height="23" viewBox="0 0 120 80" aria-hidden="true"><path d="M4 38L116 4L62 76L50 48Z" fill="#fff" stroke="#0999EA" stroke-width="7" stroke-linejoin="round"/><path d="M50 48L116 4" stroke="#0999EA" stroke-width="7" stroke-linecap="round"/></svg>
+      <span>SkyBird <span class="om">- Omaha</span></span></a>
+    <span class="ver" title="Installed in {{ install_dir }}">v{{ version }}</span>
+    <span class="spacer"></span>
+    {% if not autopost %}<span class="pill paused" title="Auto-posting is paused in Settings">Paused</span>{% endif %}
+    <span class="pill {{ 'dry' if dry_run else 'live' }}">{{ 'Dry run' if dry_run else 'Live' }}</span>
+  </div>
+  <nav aria-label="Sections">
+    <a href="/" {% if tab=='today' %}aria-current="page"{% endif %}>Approve{% if pending_count %}<span class="n">{{ pending_count }}</span>{% endif %}</a>
+    <a href="/upcoming" {% if tab=='upcoming' %}aria-current="page"{% endif %}>Upcoming</a>
+    <a href="/engagement" {% if tab=='engagement' %}aria-current="page"{% endif %}>Engagement</a>
+    <a href="/history" {% if tab=='history' %}aria-current="page"{% endif %}>History &amp; logs</a>
+    <a href="/settings" {% if tab=='settings' %}aria-current="page"{% endif %}>Settings</a>
+  </nav>
+</header>
+<main>
+{% if disk_version and disk_version != version %}
+<div class="updbar" role="status"><b>SkyBird was updated to {{ disk_version }}.</b> Restart it to use the new version.
+  <button class="btn small primary" type="button" onclick="restartSky(this)">Restart SkyBird</button></div>
+{% endif %}
+{% block main %}{% endblock %}</main>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+function toast(t){const el=document.getElementById('toast');el.textContent=t;el.hidden=false;clearTimeout(window._tt);window._tt=setTimeout(()=>el.hidden=true,2600)}
+async function restartSky(b){b.disabled=true;toast('Restarting SkyBird…');
+  try{await call('/api/restart')}catch(e){b.disabled=false;return}
+  const t0=Date.now();const ping=async()=>{try{const r=await fetch('/settings',{cache:'no-store'});if(r.ok){location.reload();return}}catch(_){}
+    if(Date.now()-t0<60000)setTimeout(ping,1500);else toast('SkyBird did not come back. Run scripts\\SETUP.bat.')};setTimeout(ping,5000)}
+async function call(url, body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const j=await r.json().catch(()=>({ok:false,error:'The server did not respond. Is SkyBird running?'}));
+  if(!j.ok){toast(j.error||'That did not work');throw new Error(j.error)}
+  return j;
+}
+</script>
+{% block script %}{% endblock %}
+</body></html>

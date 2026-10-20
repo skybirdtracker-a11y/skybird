@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block style %}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
+.sec{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.sec h2{font-size:24px}
+.sec p{margin:0;color:var(--muted);font-size:14.5px}
+.line{display:flex;align-items:center;gap:12px;justify-content:space-between;border-top:1px solid var(--line);padding-top:10px}
+.line:first-of-type{border-top:0;padding-top:0}
+.line .t{flex:1;min-width:0}
+.line .row{flex-wrap:nowrap}
+.line .t b{display:block}
+.line .t span{font-size:13px;color:var(--muted)}
+input[type=time]{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:15px var(--mono);min-height:40px;color-scheme:dark}
+.acct{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
+.acct:first-of-type{border-top:0;padding-top:0}
+.acct .h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.acct .h b{font-size:17px}
+.state{font:600 12px var(--mono);letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:6px}
+.state.on{background:var(--ok);color:#fff}.state.off{background:var(--raised);color:var(--muted)}
+details.how summary{cursor:pointer;color:var(--navy);font-size:14.5px;min-height:32px;display:flex;align-items:center}
+details.how ol{margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14.5px}
+details.how code,.sec code{font:13px var(--mono);background:var(--raised);padding:1px 5px;border-radius:4px;color:var(--navy);overflow-wrap:anywhere}
+.tagrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tagrow textarea{width:100%;min-height:44px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:14px var(--mono);resize:vertical}
+.bufbox{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:10px;padding:12px}
+.bufbox input{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:14px var(--mono);min-height:44px}
+.methods{display:flex;flex-direction:column;gap:8px}
+.method{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer;font-size:14.5px}
+.method:has(input:checked){border-color:var(--navy);background:var(--raised)}
+.method input{accent-color:var(--navy);width:18px;height:18px;margin-top:2px;flex:none}
+.warnbox{border:1px solid var(--orange);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);background:#FFF6EC}
+{% endblock %}
+{% block main %}
+<div><h1>Settings</h1><p class="lede">Changes save the moment you tap them. Anything you don't change here keeps the value in <code>config.toml</code>.</p></div>
+<div class="sgrid">
+  <section class="card sec" aria-labelledby="ap">
+    <h2 id="ap">Auto-posting</h2>
+    <div class="line"><div class="t"><b>Auto-posting</b><span>Off pauses all scheduled posts. The morning package still builds.</span></div>
+      <label class="switch"><input type="checkbox" id="autopost" {% if autopost %}checked{% endif %} aria-label="Auto-posting"></label></div>
+    <div class="line"><div class="t"><b>Live mode</b><span>Off = dry run: everything runs, but nothing uploads.</span></div>
+      <label class="switch"><input type="checkbox" id="live" {% if not dry_run %}checked{% endif %} aria-label="Live mode"></label></div>
+    {% if not any_connected %}<div class="warnbox">No accounts are connected yet. Connect them below before you turn on Live mode.</div>{% endif %}
+  </section>
+
+  <section class="card sec" aria-labelledby="sch">
+    <h2 id="sch">Post times &amp; auto-approve</h2>
+    <p>Central time. <b>Auto-approve</b> posts that slot every day without asking you, as long as its video rendered.</p>
+    {% for s in slots %}
+    <div class="line" data-slot="{{ s.key }}"><div class="t"><b>{{ s.title }}</b><span>{{ 'Auto-approved daily' if auto_approve.get(s.key) else 'Waits for your approval' }}</span></div>
+      <div class="row"><input type="time" value="{{ s.time.strftime('%H:%M') }}" aria-label="{{ s.title }} post time" class="time">
+      <label class="switch"><input type="checkbox" class="auto" {% if auto_approve.get(s.key) %}checked{% endif %} aria-label="Auto-approve {{ s.title }}"></label></div></div>
+    {% endfor %}
+  </section>
+
+  <section class="card sec" id="phone" aria-labelledby="ph">
+    <h2 id="ph">Use SkyBird on your iPhone</h2>
+    <div class="line"><div class="t"><b>Phone access</b><span>{{ 'On: your phone can open SkyBird with your PIN' if phone_on else 'Off: SkyBird only opens on this PC' }}</span></div>
+      <label class="switch"><input type="checkbox" id="phoneon" {% if phone_on %}checked{% endif %} aria-label="Phone access"></label></div>
+    <div class="bufbox">
+      <label class="lbl" for="pin">{{ 'Change PIN' if phone_pin else 'Choose a PIN (4 to 8 digits)' }}</label>
+      <div class="row" style="flex-wrap:nowrap"><input id="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="{{ '••••' if phone_pin else 'e.g. 4 digits only you know' }}" style="flex:1">
+        <button class="btn small" id="savepin" type="button">Save PIN</button></div>
+      <span class="muted" style="font-size:13px">This PC never asks for it. Your phone asks once, then remembers.</span>
+    </div>
+    {% if phone_on %}
+      {% if phone_urls %}
+      <p>On your iPhone, scan this with the Camera app, or type the address into Safari:</p>
+      {% for u in phone_urls %}
+      <div class="row" style="align-items:flex-start;gap:14px">
+        <div class="qr" style="background:#fff;padding:6px;border-radius:8px;border:1px solid var(--line);line-height:0" role="img" aria-label="QR code for {{ u.url }}">{{ u.qr|safe }}</div>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0"><b>{{ 'At home (same Wi-Fi)' if u.kind == 'wifi' else 'Anywhere (Tailscale)' }}</b>
+          <code style="font-size:15px">{{ u.url }}</code></div></div>
+      {% endfor %}
+      {% else %}<div class="warnbox">Couldn't find this PC's network address. Run <code>ipconfig</code> and use the IPv4 address, e.g. <code>http://192.168.1.20:{{ port }}</code>.</div>{% endif %}
+      {% if not phone_listening %}<div class="warnbox">Tap <b>Restart SkyBird</b> (top of the page) so the change takes effect.</div>{% endif %}
+      <details class="how"><summary>iPhone can't connect?</summary><ol>
+        <li>Make sure the iPhone is on the same Wi-Fi as this PC (not cellular).</li>
+        <li>On the PC, double-click <code>scripts\Allow phone access.bat</code> once and tap <b>Yes</b>. It lets Windows Firewall allow SkyBird on your home network.</li>
+        <li>Your Wi-Fi network should be set to <b>Private</b> in Windows (Settings → Network &amp; internet → Wi-Fi → your network).</li>
+      </ol></details>
+      <details class="how"><summary>Make it look like an app on your iPhone</summary><ol>
+        <li>Open the address in <b>Safari</b> and enter your PIN.</li><li>Tap the <b>Share</b> button, then <b>Add to Home Screen</b>.</li><li>The SkyBird badge appears on your home screen.</li></ol></details>
+      <details class="how"><summary>Use it away from home (free, private)</summary><ol>
+        <li>Install <b>Tailscale</b> on this PC (tailscale.com/download) and from the App Store on your iPhone. Sign in to both with the same account.</li>
+        <li>Come back to this page: an <b>Anywhere</b> address and QR code appear. It works on cellular too, and nothing is opened to the public internet.</li></ol></details>
+    {% endif %}
+  </section>
+
+  <section class="card sec" id="tags" aria-labelledby="tg">
+    <h2 id="tg">Accounts to tag</h2>
+    <p>SkyBird pre-checks these sparingly so we don't wear out our welcome: weekly limits per account, local news only on big "who's in town" events, never more than 4 on a post. Handles marked <b>confirmed</b> come from each organization's own website. For the others, look the account up on each app and type the handle to turn it on. Offutt and the 55th Wing are never @-tagged; use the location tag instead.</p>
+    <div class="tablewrap"><table id="accts">
+      <tr><th>Account</th>{% for p in platforms %}<th>{{ label[p] }}</th>{% endfor %}</tr>
+      {% for a in tag_accounts %}
+      <tr data-key="{{ a.key }}"><td><b>{{ a.name }}</b>{% if a.confirmed %} <span class="state on" style="font-size:10px">confirmed</span>{% endif %}<br><span class="muted" style="font-size:12.5px">{{ a.use }}</span></td>
+        {% for p in platforms %}<td><input data-p="{{ p }}" value="{{ a.handles[p] }}" placeholder="{{ ('likely ' ~ a.likely[p]) if a.likely[p] and not a.handles[p] else 'look it up' }}" aria-label="{{ a.name }} on {{ label[p] }}"
+          style="width:100%;min-width:120px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font:13px var(--mono);min-height:40px"></td>{% endfor %}</tr>
+      {% endfor %}
+    </table></div>
+    <div><button class="btn small" id="saveaccts" type="button">Save accounts</button></div>
+    <p style="margin-top:8px"><b>Other handles</b> (offered unchecked on every post except military). Separate them with spaces.</p>
+    {% for p in platforms %}
+    <div class="tagrow"><span class="plat p-{{p}}" style="min-width:90px">{{ label[p] }}</span>
+      <textarea data-p="{{p}}" aria-label="{{ label[p] }} handles to tag" placeholder="@handle @another">{{ mentions.get(p, [])|join(' ') }}</textarea></div>
+    {% endfor %}
+    <div><button class="btn small" id="savetags" type="button">Save tags</button></div>
+  </section>
+</div>
+
+<section class="card sec" aria-labelledby="vf">
+  <h2 id="vf">Video folder</h2>
+  <p>Where SkyBird saves and looks for each day's 4 videos. The file names start with the flight day (yesterday), so every day sits in one folder in date order.</p>
+  <label for="mediafolder" class="lbl" style="margin-top:4px">Folder</label>
+  <input id="mediafolder" type="text" value="{{ media_template }}" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:13.5px var(--mono);min-height:44px">
+  <div class="row"><button class="btn small" id="savefolder" type="button">Save folder</button>
+    <button class="btn small" id="skybirdfolder" type="button">Use Sky Bird\videos</button></div>
+  <p>Today's videos go in <code>{{ media_today }}</code> with names like <code>{{ media_example }}</code>.</p>
+  <p>The four files per day end in <code>post1_commercial.mp4</code>, <code>post2_private.mp4</code>, <code>post3_military.mp4</code> and <code>post4_all.mp4</code>, plus <code>stats.json</code> for the caption numbers. SkyBird makes them for you; to use your own video instead, give it the same name.</p>
+</section>
+
+<section class="card sec" id="os" aria-labelledby="osh">
+  <h2 id="osh">Flight data (OpenSky)</h2>
+  {% if opensky_on %}<p><span class="state on">Connected</span> SkyBird makes the 4 videos from yesterday's flights every morning before {{ cfg.general.get('prepare_time','06:00') }}.</p>
+  {% else %}<p><span class="state off">Not connected</span> SkyBird needs a free OpenSky account to make the daily videos.</p>{% endif %}
+  <details class="how" {% if not opensky_on %}open{% endif %}><summary>How to connect OpenSky (free, 5 minutes)</summary><ol>
+    <li>Go to <b>opensky-network.org</b> and click <b>Login → Register</b> (or log in if your Flight Visibility project already has an account).</li>
+    <li>Open <b>My OpenSky → Account → API Client</b> and create a client. Copy the <b>client id</b> and <b>client secret</b>.</li>
+    <li>Paste both below and tap <b>Connect</b>.</li>
+  </ol></details>
+  <label class="lbl" for="oscid">Client id</label>
+  <input id="oscid" type="text" autocomplete="off" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:14px var(--mono);min-height:44px">
+  <label class="lbl" for="oscs">Client secret</label>
+  <input id="oscs" type="password" autocomplete="off" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:14px var(--mono);min-height:44px">
+  <div><button class="btn small" id="osconnect" type="button">Connect</button></div>
+</section>
+
+<section class="card sec" aria-labelledby="pm">
+  <h2 id="pm">Posting method</h2>
+  <p>How SkyBird gets each video onto Instagram, Facebook and TikTok. You can switch at any time.</p>
+  <div class="methods" role="radiogroup" aria-label="Posting method">
+    <label class="method"><input type="radio" name="backend" value="buffer" {% if backend=='buffer' %}checked{% endif %}>
+      <span><b>Buffer: fully automatic and free</b> <span class="pill">Recommended</span><br>
+      <span class="muted">Buffer's free plan covers exactly 3 channels: Instagram, Facebook and TikTok. <b>No developer accounts needed.</b> SkyBird puts each video on a temporary link (deleted after 24 hours) for Buffer to pick up.</span></span></label>
+    <label class="method"><input type="radio" name="backend" value="upload_post" {% if backend=='upload_post' %}checked{% endif %}>
+      <span><b>Upload-Post: fully automatic</b><br>
+      <span class="muted">You link your 3 accounts on upload-post.com, and SkyBird posts through their approved apps. <b>No developer accounts needed.</b> TikTok needs a paid plan (about $16–24/month).</span></span></label>
+    <label class="method"><input type="radio" name="backend" value="manual" {% if backend=='manual' %}checked{% endif %}>
+      <span><b>Manual post kit: free</b><br>
+      <span class="muted">At each time slot your phone buzzes. Tap it, save the video, copy the caption and post (about 30 seconds per app). Engagement numbers aren't tracked.</span></span></label>
+    <label class="method"><input type="radio" name="backend" value="direct" {% if backend=='direct' %}checked{% endif %}>
+      <span><b>Direct: your own developer apps</b><br>
+      <span class="muted">Free and fully automatic, but needs Meta and TikTok developer accounts (the part that's stuck right now).</span></span></label>
+  </div>
+</section>
+
+<section class="card sec" aria-labelledby="ac">
+  <div class="row"><h2 id="ac" style="flex:1">Accounts</h2>
+    <span class="muted" style="font-size:13px">{% if accounts.checked_at %}Checked {{ accounts.checked_at }}{% endif %}</span>
+    <button class="btn small" id="checkacc" type="button">Check connections</button></div>
+  {% for plat in platforms %}{% set a = accounts.get(plat, {}) %}
+  <div class="acct"><div class="h"><span class="plat p-{{plat}}"><b>{{ label[plat] }}</b></span>
+    <span class="state {{ 'on' if a.ok else 'off' }}">{{ 'Connected' if a.ok else 'Not connected' }}</span>
+    <span class="muted">{{ a.name if a.ok else (a.error or 'Tap Check connections') }}</span></div></div>
+  {% endfor %}
+
+  {% if backend == 'buffer' %}
+  <details class="how" open><summary>How to connect through Buffer (about 10 minutes, free)</summary><ol>
+    <li>Make sure Instagram is a <b>Professional</b> account (Settings → Account type and tools) linked to the SkyBird Facebook <b>Page</b>, and TikTok is a <b>Business</b> or <b>Creator</b> account.</li>
+    <li>Sign up free at <b>buffer.com</b>.</li>
+    <li>Click <b>Connect channels</b>. Add <b>Instagram</b>, the SkyBird Facebook <b>Page</b> and <b>TikTok</b>, logging in to each. The free plan allows exactly these 3.</li>
+    <li>In Buffer, open <b>Settings → API</b> (or your account menu → API) and create a <b>personal API key</b>. Copy it.</li>
+    <li>Paste it in the box below and tap <b>Connect Buffer</b>. SkyBird finds your 3 channels automatically.</li>
+    <li>When all 3 show Connected above, turn on <b>Live mode</b>.</li>
+  </ol></details>
+  <div class="bufbox">
+    <label class="lbl" for="bufkey">Buffer API key {% if buffer_on %}<span class="state on">Saved</span>{% endif %}</label>
+    <input id="bufkey" type="text" autocomplete="off" spellcheck="false" placeholder="{{ 'Paste a new key to replace the saved one' if buffer_on else 'Paste your Buffer API key here' }}">
+    <div class="row"><button class="btn primary small" id="bufconnect" type="button">Connect Buffer</button><span id="bufres" class="muted" style="font-size:14px"></span></div>
+  </div>
+  <p class="muted" style="margin-top:8px">Engagement numbers aren't available through Buffer's API, so check Buffer's own Analytics tab or each app's insights.</p>
+  {% elif backend == 'upload_post' %}
+  <details class="how" open><summary>How to connect through Upload-Post (about 10 minutes)</summary><ol>
+    <li>Make sure Instagram is a <b>Professional</b> account (Settings → Account type and tools) and is linked to the SkyBird Facebook <b>Page</b>. TikTok should be a <b>Business</b> or <b>Creator</b> account.</li>
+    <li>Sign up at <b>app.upload-post.com</b>. The free plan covers Instagram and Facebook with 10 uploads a month; TikTok and unlimited posts need the Basic plan.</li>
+    <li>Create a profile named <code>skybird</code>. Inside it, tap <b>Connect</b> for Instagram, Facebook and TikTok, and log in to each. This is the normal "Log in with Facebook/TikTok" screen, not a developer account.</li>
+    <li>Go to <b>API Keys</b> and create a key.</li>
+    <li>On the PC, double-click <code>scripts\connect_accounts.bat</code> and paste the key. It finds your profile and Facebook Page on its own.</li>
+    <li>Tap <b>Check connections</b> above. When all three show Connected, turn on <b>Live mode</b>.</li>
+  </ol></details>
+  {% elif backend == 'manual' %}
+  <details class="how" open><summary>How manual posting works</summary><ol>
+    <li>Approve in the morning as usual.</li>
+    <li>At 9, 11, 1 and 6 your phone buzzes (set up notifications below). Tap it to open the post kit.</li>
+    <li><b>Save video</b>, then open Instagram, tap <b>+</b> and choose <b>Reel</b>, pick the video, <b>Copy caption</b> and paste it. Post. Do the same for Facebook and TikTok.</li>
+    <li>Tap <b>I posted it</b> so History stays accurate.</li>
+    <li>The kit only works in Live mode. In dry run nothing is readied.</li>
+  </ol></details>
+  {% else %}
+  <details class="how"><summary>How to connect with your own developer apps</summary><ol>
+    <li>Meta: in developers.facebook.com, create a Business app, then run <code>python -m skybird meta-setup</code> (full steps in README section 2).</li>
+    <li>TikTok: in developers.tiktok.com, create an app with the Content Posting API, then run <code>python -m skybird tiktok-auth</code> (README section 3).</li>
+  </ol></details>
+  {% endif %}
+</section>
+
+<section class="card sec" aria-labelledby="nt">
+  <h2 id="nt">Phone notifications</h2>
+  {% if notify_on %}<p><span class="state on">On</span> Topic <code>{{ notify_topic }}</code>. Your phone gets a buzz when the morning posts are ready, when a post kit is ready, and if anything fails.</p>
+  {% else %}<p><span class="state off">Off</span> Get a buzz when the morning posts are ready to approve, so tapping it takes you straight to the Approve button.</p>{% endif %}
+  <ol style="margin:0;padding-left:20px;font-size:14.5px;display:flex;flex-direction:column;gap:6px">
+    <li>Install the free <b>ntfy</b> app (App Store or Google Play) and subscribe to a topic name only you know, e.g. <code>skybird-omaha-7q4m2</code>.</li>
+    <li>In <code>config.toml</code> under <code>[notify]</code>, set <code>ntfy_topic</code> to that name, and <code>dashboard_url</code> to the address you open the dashboard at on your phone.</li>
+    <li>Restart SkyBird.</li>
+  </ol>
+</section>
+
+<section class="card sec" aria-labelledby="ab">
+  <h2 id="ab">About this install</h2>
+  <p>Version <code>{{ version }}</code>, running from <code>{{ install_dir }}</code>. After you install an update, this should show the new version. If it doesn't, tap Restart below, or double-click <code>scripts\SETUP.bat</code> in that same folder.</p>
+  <div><button class="btn small" type="button" onclick="restartSky(this)">Restart SkyBird</button></div>
+</section>
+
+<section class="card sec" aria-labelledby="ph">
+</section>
+{% endblock %}
+{% block script %}
+<script>
+const save = async (body, msg) => { await call('/api/settings', body); toast(msg); };
+document.getElementById('autopost').addEventListener('change', e => save({autopost:e.target.checked}, e.target.checked?'Auto-posting on':'Auto-posting paused').then(()=>setTimeout(()=>location.reload(),600)));
+document.getElementById('live').addEventListener('change', e => save({dry_run:!e.target.checked}, e.target.checked?'Live: posts will really upload':'Dry run: nothing uploads').then(()=>setTimeout(()=>location.reload(),600)));
+document.querySelectorAll('[data-slot]').forEach(row => {
+  const k=row.dataset.slot;
+  row.querySelector('.time').addEventListener('change', e => save({times:{[k]:e.target.value}}, 'Post time saved'));
+  row.querySelector('.auto').addEventListener('change', e => { save({auto_approve:{[k]:e.target.checked}}, e.target.checked?'Auto-approve on':'Auto-approve off');
+    row.querySelector('.t span').textContent = e.target.checked?'Auto-approved daily':'Waits for your approval'; });
+});
+document.getElementById('savetags').addEventListener('click', () => {
+  const m={}; document.querySelectorAll('.tagrow textarea').forEach(t=>{ m[t.dataset.p]=t.value.split(/[\s,]+/).filter(Boolean).map(h=>h.startsWith('@')?h:'@'+h) });
+  save({mentions:m}, 'Tags saved. They appear on tomorrow\'s posts, or tap Rebuild on today\'s.');
+});
+document.getElementById('saveaccts').addEventListener('click', () => {
+  const h={}; document.querySelectorAll('#accts tr[data-key]').forEach(tr=>{ h[tr.dataset.key]={}; tr.querySelectorAll('input').forEach(i=>h[tr.dataset.key][i.dataset.p]=i.value.trim()) });
+  save({account_handles:h}, 'Accounts saved. They apply to tomorrow\'s posts, or tap Rebuild on today\'s.');
+});
+const phoneSave = async (body) => { const j = await call('/api/phone', body);
+  toast(j.restart ? 'Saved. Restarting SkyBird…' : 'Saved'); if (j.restart) { const b=document.createElement('button'); restartSky(b) } else setTimeout(()=>location.reload(),700) };
+document.getElementById('savepin').addEventListener('click', () => { const v=document.getElementById('pin').value.trim(); if(!v){toast('Type a PIN first');return}
+  phoneSave({pin:v, on:document.getElementById('phoneon').checked}).catch(()=>{}) });
+document.getElementById('phoneon').addEventListener('change', e => { const v=document.getElementById('pin').value.trim();
+  phoneSave({on:e.target.checked, pin:v}).catch(()=>{ e.target.checked=!e.target.checked; document.getElementById('pin').focus() }) });
+const bc=document.getElementById('bufconnect');
+if(bc)bc.addEventListener('click',async()=>{bc.disabled=true;const res=document.getElementById('bufres');res.textContent='Connecting…';
+  try{const j=await call('/api/buffer',{api_key:document.getElementById('bufkey').value});
+    const ch=j.channels||{};res.textContent=Object.entries(ch).map(([p,n])=>(n?'✓ ':'✕ ')+p+(n?' ('+n+')':' not found in Buffer')).join(' · ');
+    toast('Buffer connected');setTimeout(()=>location.reload(),2500)}
+  catch(e){res.textContent=''}finally{bc.disabled=false}});
+document.getElementById('osconnect').addEventListener('click',async e=>{e.target.disabled=true;
+  try{await call('/api/opensky',{client_id:document.getElementById('oscid').value,client_secret:document.getElementById('oscs').value});toast('OpenSky connected');setTimeout(()=>location.reload(),700)}
+  finally{e.target.disabled=false}});
+document.getElementById('savefolder').addEventListener('click',()=>save({media_folder:document.getElementById('mediafolder').value},'Video folder saved').then(()=>setTimeout(()=>location.reload(),600)));
+document.getElementById('skybirdfolder').addEventListener('click',()=>{document.getElementById('mediafolder').value='C:/Users/joshu/OneDrive/Desktop/Sky Bird/videos';
+  save({media_folder:'C:/Users/joshu/OneDrive/Desktop/Sky Bird/videos'},'Video folder saved').then(()=>setTimeout(()=>location.reload(),600))});
+document.querySelectorAll('input[name=backend]').forEach(r=>r.addEventListener('change',()=>save({backend:r.value},'Posting method saved').then(()=>setTimeout(()=>location.reload(),600))));
+document.getElementById('checkacc').addEventListener('click', async e => { e.target.disabled=true; toast('Checking…');
+  try{ await call('/api/accounts/check'); location.reload(); } finally { e.target.disabled=false } });
+</script>
+{% endblock %}

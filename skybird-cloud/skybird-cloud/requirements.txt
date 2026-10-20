@@ -1,0 +1,7 @@
+requests>=2.31
+flask>=3.0
+tzdata>=2024.1
+matplotlib>=3.8
+numpy>=1.26
+imageio-ffmpeg>=0.5
+airportsdata>=20240101

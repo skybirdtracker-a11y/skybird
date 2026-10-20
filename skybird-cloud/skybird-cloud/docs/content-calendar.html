@@ -1,0 +1,201 @@
+<title>SkyBird Content Calendar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{color-scheme:dark;--bg:#0E1116;--surface:#161B22;--raised:#1C222B;--line:#2A303A;--text:#F1ECE2;--muted:#A3ABB6;--amber:#F2A93B;--blue:#7FB2E5;--green:#6CC08B;--rose:#E88A80;--violet:#B6A2F0;
+--display:'Big Shoulders Display','Arial Narrow',sans-serif;--body:'Barlow',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font:16px/1.5 var(--body);margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:28px 64px;display:flex;flex-direction:column;gap:48px}
+h1,h2{font-family:var(--display);font-weight:800;margin:0;line-height:.95;text-wrap:balance}
+h1{font-size:clamp(44px,9vw,84px);letter-spacing:.5px}
+h2{font-size:clamp(30px,5vw,42px)}
+.eyebrow{font:600 12px/1 var(--mono);letter-spacing:3px;text-transform:uppercase;color:var(--amber)}
+.lede{color:var(--muted);max-width:62ch;margin:0}
+.top{display:flex;flex-direction:column;gap:14px}
+.brand{display:flex;align-items:center;gap:10px;font:600 14px var(--mono);letter-spacing:3px}
+section{display:flex;flex-direction:column;gap:18px}
+.sechead{display:flex;flex-direction:column;gap:8px}
+/* departures board */
+.board{background:#0A0C10;border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+.board table{width:100%;border-collapse:collapse;min-width:640px}
+.board th{font:600 11px var(--mono);letter-spacing:2px;color:var(--muted);text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);text-transform:uppercase}
+.board td{padding:14px;border-bottom:1px solid #1B2028;vertical-align:top}
+.board tr:last-child td{border-bottom:0}
+.t{font:600 22px var(--mono);color:var(--amber);white-space:nowrap;font-variant-numeric:tabular-nums}
+.post{font:800 24px/1 var(--display)}
+.post small{display:block;font:400 13px var(--mono);color:var(--muted);margin-top:6px;letter-spacing:1px}
+.board td p{margin:0;color:var(--muted);font-size:15px}
+.board td p b{color:var(--text);font-weight:600}
+.status{font:600 11px var(--mono);letter-spacing:2px;color:var(--green);white-space:nowrap}
+/* next up */
+.next{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.nx{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.nx.peak{border-color:var(--amber)}
+.nx .when{font:600 12px var(--mono);letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
+.nx .name{font:800 26px/1 var(--display)}
+.nx .in{font:600 13px var(--mono);color:var(--amber)}
+/* weekly */
+.week{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:12px}
+.day{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.day .d{font:600 12px var(--mono);letter-spacing:2px;color:var(--blue)}
+.day .n{font:800 22px/1.05 var(--display)}
+.day p{margin:0;color:var(--muted);font-size:14.5px}
+/* calendar */
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.filters button{font:600 13px var(--mono);letter-spacing:1px;background:var(--surface);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:9px 14px;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;gap:8px}
+.filters button[aria-pressed="true"]{color:var(--bg);background:var(--text);border-color:var(--text)}
+.filters button:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.k-peak{--k:var(--amber)}.k-sports{--k:var(--blue)}.k-travel{--k:var(--green)}.k-military{--k:var(--rose)}.k-aviation{--k:var(--violet)}.k-local{--k:#C9C2B4}
+.dot{background:var(--k)}
+.month{display:flex;flex-direction:column;gap:8px}
+.month h3{font:800 28px/1 var(--display);margin:18px 0 4px;display:flex;align-items:baseline;gap:12px}
+.month h3 span{font:600 12px var(--mono);color:var(--muted);letter-spacing:2px}
+details.ev{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+details.ev[open]{border-color:var(--k)}
+details.ev summary{list-style:none;cursor:pointer;padding:12px 14px;display:grid;grid-template-columns:118px minmax(0,1fr) auto;gap:12px;align-items:center}
+details.ev summary::-webkit-details-marker{display:none}
+.dates{font:600 13px var(--mono);font-variant-numeric:tabular-nums;color:var(--text);display:flex;align-items:center;gap:8px}
+.en{font-weight:600;font-size:16.5px;line-height:1.3}
+.badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.b{font:600 10.5px var(--mono);letter-spacing:1.5px;text-transform:uppercase;padding:3px 7px;border-radius:5px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.b.pk{color:var(--bg);background:var(--amber);border-color:var(--amber)}
+.b.est{color:var(--amber);border-color:#6b5324}
+.evbody{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px;font-size:15px}
+.evbody .note{color:var(--muted);margin:0}
+.hook{margin:0;padding:10px 12px;background:var(--raised);border-radius:8px;font-size:15px}
+.hook::before{content:"CAPTION LINE";display:block;font:600 10.5px var(--mono);letter-spacing:2px;color:var(--muted);margin-bottom:4px}
+.evbody ul{margin:0;padding-left:18px;color:var(--text)}
+.evbody .lbl{font:600 10.5px var(--mono);letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+.tags{font:13px var(--mono);color:var(--blue);overflow-wrap:anywhere}
+@media(max-width:560px){details.ev summary{grid-template-columns:1fr auto}.dates{grid-column:1/-1}}
+/* routine */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px;counter-reset:s;padding:0;margin:0;list-style:none}
+.steps li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px;counter-increment:s}
+.steps li::before{content:counter(s);font:800 34px/1 var(--display);color:var(--amber)}
+.steps b{font-size:17px}
+.steps span{color:var(--muted);font-size:14.5px}
+footer{color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);padding-top:16px}
+@media (prefers-reduced-motion:no-preference){.nx{animation:rise .5s ease both}.nx:nth-child(2){animation-delay:.06s}.nx:nth-child(3){animation-delay:.12s}}
+@keyframes rise{from{transform:translateY(6px)}to{transform:none}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><svg width="30" height="30" viewBox="0 0 44 44" fill="none" stroke="#F2A93B" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M5 38H39L29 27L31 6H23Z"/><path d="M30 11L38 8"/><path d="M29.5 17L39 15"/><path d="M29 23L37 23"/></svg>SKYBIRD - OMAHA</div>
+    <h1>Content calendar</h1>
+    <p class="lede">Four posts a day on Instagram, Facebook and TikTok, plus the holidays and Omaha events that change what goes in them, October 2026 through December 2027. Every date here is also in <code>events.toml</code>, so the auto-poster adds the event captions and hashtags on its own.</p>
+  </header>
+
+  <section aria-labelledby="next-h">
+    <div class="sechead"><span class="eyebrow">Next up</span><h2 id="next-h">Coming events</h2></div>
+    <div class="next" id="next"></div>
+  </section>
+
+  <section aria-labelledby="daily-h">
+    <div class="sechead"><span class="eyebrow">Every day · Central time</span><h2 id="daily-h">Daily departures</h2>
+    <p class="lede">You approve all four by about 8:30 AM. Each video shows the previous day's tracked flights.</p></div>
+    <div class="board"><table>
+      <thead><tr><th>Time</th><th>Post</th><th>What's in the video</th><th>Best caption angle</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td class="t">09:00</td><td class="post">Eppley Commercial<small>POST 01 · OMA</small></td><td><p>Zoom out from OMA to every <b>departure</b> city, then zoom back in on <b>arrivals</b>, then top-city stats</p></td><td><p><b>Hook:</b> "Where did Omaha fly yesterday?" Morning commuters scroll the most at this hour</p></td><td class="status">ON TIME</td></tr>
+        <tr><td class="t">11:00</td><td class="post">Private Jets<small>POST 02 · OMA + MLE</small></td><td><p>Jet routes, top destinations, most-seen aircraft types</p></td><td><p><b>Question:</b> "Guess the #1 private jet destination." Guessing games get comments</p></td><td class="status">ON TIME</td></tr>
+        <tr><td class="t">13:00</td><td class="post">Military<small>POST 03 · OFF</small></td><td><p>Offutt traffic: RC-135s, KC-135s, visiting transports</p></td><td><p><b>Data:</b> aircraft types and counts. Military followers like the specifics</p></td><td class="status">ON TIME</td></tr>
+        <tr><td class="t">18:00</td><td class="post">All Airports, All Planes<small>POST 04 · OMA · MLE · OFF · CBF</small></td><td><p>"Every bird flying in Omaha": the full-metro map and per-airport counts</p></td><td><p><b>Hook</b> or <b>Question</b>. Evening is the biggest reach window, so this is the post to share</p></td><td class="status">ON TIME</td></tr>
+      </tbody></table></div>
+  </section>
+
+  <section aria-labelledby="week-h">
+    <div class="sechead"><span class="eyebrow">Optional · stories &amp; engagement</span><h2 id="week-h">Weekly series</h2>
+    <p class="lede">Quick Instagram and Facebook Stories that build habits around the four daily posts. None of these need a new render.</p></div>
+    <div class="week">
+      <div class="day"><span class="d">MON</span><span class="n">Weekend recap</span><p>Put weekend totals (Sat + Sun flights) in the 6 PM caption.</p></div>
+      <div class="day"><span class="d">TUE</span><span class="n">Tail Tuesday</span><p>Spotlight one interesting aircraft from yesterday: its type, age and where it came from.</p></div>
+      <div class="day"><span class="d">WED</span><span class="n">Where's Omaha going?</span><p>Story poll between two top destinations; reveal the answer in Thursday's 9 AM post.</p></div>
+      <div class="day"><span class="d">THU</span><span class="n">Throwback</span><p>A bit of Eppley or Offutt history with an old photo (check the photo's rights first).</p></div>
+      <div class="day"><span class="d">FRI</span><span class="n">Weekend getaways</span><p>"Nonstops out of OMA this weekend": the top leisure cities.</p></div>
+      <div class="day"><span class="d">SAT</span><span class="n">Spotter Saturday</span><p>Repost a follower's plane photo, credited to them. Ask for submissions in Friday's post.</p></div>
+      <div class="day"><span class="d">SUN</span><span class="n">Week in the sky</span><p>Weekly total, busiest day and top city, in one Story frame.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="cal-h">
+    <div class="sechead"><span class="eyebrow">Oct 2026 – Dec 2027</span><h2 id="cal-h">Events &amp; holidays</h2>
+    <p class="lede">Tap an event to see its caption line, hashtags and bonus-post ideas. Events marked <b>est.</b> have estimated dates; check them a few weeks before.</p></div>
+    <div class="filters" role="group" aria-label="Filter events" id="filters"></div>
+    <div id="cal"></div>
+  </section>
+
+  <section aria-labelledby="rt-h">
+    <div class="sechead"><span class="eyebrow">Your morning</span><h2 id="rt-h">Approval routine</h2></div>
+    <ol class="steps">
+      <li><b>6:00 AM: package builds</b><span>The videos, three caption options per post and the day's event tags are ready in the dashboard.</span></li>
+      <li><b>Review (about 2 minutes)</b><span>Watch the four videos, pick Hook, Data or Question, and tick any extra tags.</span></li>
+      <li><b>Tap Approve all</b><span>Each post goes out at 9, 11, 1 and 6. If you're late, it posts right away (up to 4 hours after its slot).</span></li>
+      <li><b>Event days</b><span>The banner at the top of the dashboard lists bonus-post ideas. Make those by hand, or ask for a custom render.</span></li>
+    </ol>
+  </section>
+
+  <footer>Sources for event dates: cwsomaha.com, gocreighton.com, huskers.com, the FIVB, CHI Health Center, holidaylightsfestival.org and Berkshire meeting guides. There is no Offutt air show in 2027; it's every other year, and the next one is in 2028.</footer>
+</div>
+
+<script>
+const EVENTS = [{"n": "Huskers vs Maryland (Lincoln)", "s": "2026-10-02", "e": "2026-10-04", "c": true, "p": 2, "k": "sports", "note": "Husker home weekend: fans and private jets use OMA Fri–Sun.", "hook": "🏈 Husker game weekend: watch the private jet traffic into Omaha.", "lead": 0, "tags": ["#GBR", "#Huskers", "#HuskerFootball"], "bonus": ["Friday: 'Jets arriving for the Husker game' map"], "slots": ["private", "all"]}, {"n": "Huskers vs Indiana (Lincoln)", "s": "2026-10-09", "e": "2026-10-11", "c": true, "p": 2, "k": "sports", "note": "Husker home weekend.", "hook": "🏈 Husker game weekend: where are the fans flying in from?", "lead": 0, "tags": ["#GBR", "#Huskers", "#HuskerFootball"], "bonus": [], "slots": ["private", "all"]}, {"n": "Halloween + Huskers vs Washington", "s": "2026-10-30", "e": "2026-11-01", "c": true, "p": 2, "k": "sports", "note": "Husker home game Sat Oct 31.", "hook": "🎃 Halloween weekend + a Husker home game. The sky was busy.", "lead": 0, "tags": ["#GBR", "#Huskers", "#Halloween"], "bonus": ["'Spookiest' flight path of the week (the weirdest route shape)"], "slots": ["all_posts"]}, {"n": "Veterans Day", "s": "2026-11-11", "e": "2026-11-11", "c": true, "p": 4, "k": "military", "note": "Watch for flyovers. Military post leads with a thank-you.", "hook": "🇺🇸 Happy Veterans Day. Thank you to everyone who served, including the crews at Offutt.", "lead": 0, "tags": ["#VeteransDay", "#ThankAVeteran", "#OffuttAFB"], "bonus": ["Veterans Day tribute: every military aircraft seen over Omaha this week"], "slots": ["military", "all"]}, {"n": "Huskers vs Ohio State (Lincoln)", "s": "2026-11-20", "e": "2026-11-22", "c": true, "p": 4, "k": "sports", "note": "Biggest fall weekend for private jets and charters. Expect a spike Fri + Sun.", "hook": "🏈 Ohio State weekend: one of the busiest private jet weekends of the fall in Omaha.", "lead": 2, "tags": ["#GBR", "#Huskers", "#NEBvsOSU", "#HuskerFootball"], "bonus": ["Friday night: 'Jets arriving for Ohio State' live-count post", "Sunday: departure rush map"], "slots": ["private", "all"]}, {"n": "Thanksgiving travel rush", "s": "2026-11-24", "e": "2026-11-29", "c": true, "p": 4, "k": "travel", "note": "Wed 11/25 is the busiest travel day; Sun 11/29 is the return peak.", "hook": "🦃 Thanksgiving travel week at Eppley. Where is Omaha headed for the holiday?", "lead": 3, "tags": ["#Thanksgiving", "#HolidayTravel", "#ThanksgivingTravel"], "bonus": ["Wed 11/25: 'Busiest day of the year' post (morning)", "Sun 11/29: 'Everyone's coming home' arrivals map"], "slots": ["commercial", "all"]}, {"n": "Holiday Lights Festival", "s": "2026-11-26", "e": "2027-01-03", "c": false, "p": 1, "k": "local", "note": "Downtown Omaha lights; the lighting ceremony is about Sat 11/28.", "hook": "✨ Holiday Lights Festival season downtown.", "lead": 0, "tags": ["#HolidayLightsFestival", "#OmahaHolidays"], "bonus": [], "slots": ["all"]}, {"n": "Creighton vs Nebraska (CHI Health Center)", "s": "2026-12-05", "e": "2026-12-05", "c": true, "p": 2, "k": "sports", "note": "In-state basketball rivalry.", "hook": "🏀 Creighton vs Nebraska tonight at CHI Health Center.", "lead": 0, "tags": ["#GoJays", "#Creighton", "#Huskers"], "bonus": [], "slots": ["all"]}, {"n": "Creighton vs Gonzaga (CHI Health Center)", "s": "2026-12-11", "e": "2026-12-12", "c": true, "p": 2, "k": "sports", "note": "Big non-conference game; Gonzaga's team charter and traveling fans.", "hook": "🏀 Gonzaga is in town. Look for the team charter on the map.", "lead": 0, "tags": ["#GoJays", "#Creighton", "#Gonzaga"], "bonus": ["Spot the team charter: Gonzaga's flight path into OMA"], "slots": ["private", "all"]}, {"n": "Wright Brothers Day", "s": "2026-12-17", "e": "2026-12-17", "c": true, "p": 2, "k": "aviation", "note": "123 years since the first powered flight (1903).", "hook": "✈️ 123 years ago today the Wright brothers flew 120 feet. Omaha flew a lot farther today.", "lead": 0, "tags": ["#WrightBrothersDay", "#AvGeek"], "bonus": ["Fun-fact carousel: 1903 vs today's longest flight out of OMA"], "slots": ["all"]}, {"n": "Christmas travel", "s": "2026-12-18", "e": "2026-12-27", "c": true, "p": 3, "k": "travel", "note": "Holiday travel peak; Christmas is Friday.", "hook": "🎄 Holiday travel season at Eppley. Where is Omaha going for Christmas?", "lead": 0, "tags": ["#HolidayTravel", "#ChristmasTravel"], "bonus": [], "slots": ["commercial", "all"]}, {"n": "NORAD Tracks Santa", "s": "2026-12-24", "e": "2026-12-24", "c": true, "p": 5, "k": "peak", "note": "The most shareable post of the year. NORAD's Santa tracker plus the 6 PM 'All planes' post.", "hook": "🎅 Keep your eyes on the sky tonight: one unregistered aircraft is expected over Omaha. 🦌", "lead": 0, "tags": ["#NORADSanta", "#SantaTracker", "#ChristmasEve"], "bonus": ["6 PM post: add a joke 'Santa' route to the All-planes map", "Story: 'Our radar says Santa is 2 hours out'"], "slots": ["all_posts"]}, {"n": "New Year's travel", "s": "2026-12-30", "e": "2027-01-03", "c": true, "p": 3, "k": "travel", "note": "New Year's Day is Friday; return peak Sat–Sun.", "hook": "🎆 New Year's travel: Omaha's flights to ring in 2027.", "lead": 0, "tags": ["#NewYear", "#HolidayTravel"], "bonus": ["Jan 1: '2026 in the sky' year-in-review (total flights, top cities, busiest day)"], "slots": ["commercial", "all"]}, {"n": "NSAA State Wrestling (CHI Health Center)", "s": "2027-02-18", "e": "2027-02-20", "c": true, "p": 1, "k": "sports", "note": "Mostly drive-in traffic from around Nebraska; small flight effect.", "hook": "🤼 State wrestling is in town at CHI Health Center.", "lead": 0, "tags": ["#NSAAWrestling"], "bonus": [], "slots": ["all"]}, {"n": "Spring break", "s": "2027-03-06", "e": "2027-03-28", "c": false, "p": 2, "k": "travel", "note": "Estimated: most schools take a week in mid-March; UNL/UNO around 3/14–3/21.", "hook": "🌴 Spring break season: how many flights to Phoenix, Florida and Vegas today?", "lead": 0, "tags": ["#SpringBreak", "#SpringBreak2027"], "bonus": ["'Spring break scoreboard': PHX vs LAS vs MCO/TPA flight counts"], "slots": ["commercial"]}, {"n": "NCAA Men's Basketball 1st/2nd Rounds (Omaha)", "s": "2027-03-18", "e": "2027-03-20", "c": true, "p": 4, "k": "sports", "note": "Team charters usually land 3/16–3/17. Fans book at the last minute after Selection Sunday.", "hook": "🏀 March Madness in Omaha: team charters and fans are flying in.", "lead": 2, "tags": ["#MarchMadness", "#NCAATournament", "#Omaha"], "bonus": ["'Which teams flew in?' map: charter origins", "Departure map after each team is knocked out"], "slots": ["all_posts"]}, {"n": "Berkshire Hathaway Annual Meeting", "s": "2027-04-29", "e": "2027-05-02", "c": true, "p": 5, "k": "peak", "note": "Biggest private jet event of the year. Meeting Sat 5/1; arrivals Thu–Fri, departures Sat night–Sun. The Friday shopping day and Sunday 5K follow the usual pattern (estimated).", "hook": "💼 Berkshire Hathaway weekend: the busiest private jet days of the year in Omaha.", "lead": 5, "tags": ["#BerkshireHathaway", "#BRK", "#BerkshireMeeting", "#Woodstock4Capitalists"], "bonus": ["Thu + Fri: live 'jets on the ground' count, posted twice daily", "Fri: 'Where are the shareholders flying from?' origin map", "Sun: departure-rush timelapse", "Mon: record recap: most private jets in one day"], "slots": ["all_posts"]}, {"n": "Memorial Day weekend", "s": "2027-05-28", "e": "2027-05-31", "c": true, "p": 3, "k": "military", "note": "Monday 5/31. Watch for flyovers.", "hook": "🇺🇸 Memorial Day weekend: honoring those who gave everything.", "lead": 0, "tags": ["#MemorialDay", "#NeverForget"], "bonus": [], "slots": ["commercial", "military", "all"]}, {"n": "NCAA Men's College World Series", "s": "2027-06-18", "e": "2027-06-28", "c": true, "p": 5, "k": "peak", "note": "8 teams' charters plus fans and boosters' jets. Charter origins show who is still alive in the bracket.", "hook": "⚾ CWS in Omaha: follow the team charters and fan flights.", "lead": 4, "tags": ["#CWS", "#MCWS", "#RoadToOmaha", "#CollegeWorldSeries"], "bonus": ["Arrival day: 'All 8 teams' charter paths into OMA'", "After each elimination: 'Heading home' departure map", "Final: the champion's flight home"], "slots": ["all_posts"]}, {"n": "Omaha Summer Arts Festival", "s": "2027-06-25", "e": "2027-06-27", "c": false, "p": 1, "k": "local", "note": "Estimated late-June weekend, often the same weekend as the CWS.", "hook": "🎨 Summer Arts Festival weekend downtown.", "lead": 0, "tags": ["#SummerArtsFestival"], "bonus": [], "slots": ["all"]}, {"n": "Independence Day", "s": "2027-07-02", "e": "2027-07-05", "c": true, "p": 3, "k": "travel", "note": "July 4 is Sunday; the federal holiday is Mon 7/5.", "hook": "🎆 Happy 4th from the skies over Omaha.", "lead": 0, "tags": ["#July4th", "#IndependenceDay", "#FourthOfJuly"], "bonus": [], "slots": ["all_posts"]}, {"n": "Maha Festival", "s": "2027-08-06", "e": "2027-08-07", "c": false, "p": 1, "k": "local", "note": "Estimated early-August weekend.", "hook": "🎸 Maha Festival weekend in Omaha.", "lead": 0, "tags": ["#MahaFestival"], "bonus": [], "slots": ["all"]}, {"n": "National Aviation Day", "s": "2027-08-19", "e": "2027-08-19", "c": true, "p": 3, "k": "aviation", "note": "Orville Wright's birthday. A great day to push follows and shares.", "hook": "✈️ Happy National Aviation Day from Omaha's daily flight tracker.", "lead": 0, "tags": ["#NationalAviationDay", "#AvGeek"], "bonus": ["'Omaha aviation by the numbers' carousel (year to date)"], "slots": ["all_posts"]}, {"n": "FIVB Women's Volleyball World Cup (Omaha matches)", "s": "2027-08-20", "e": "2027-09-05", "c": false, "p": 3, "k": "sports", "note": "The tournament dates are confirmed; Omaha's own match days are not yet. International team charters are possible.", "hook": "🏐 The Volleyball World Cup is in Omaha. The world is flying in.", "lead": 0, "tags": ["#VolleyballWorldCup", "#VNL", "#Omaha"], "bonus": ["'International arrivals' map (non-US origins)"], "slots": ["commercial", "private", "all"]}, {"n": "Labor Day weekend + State Fair", "s": "2027-09-03", "e": "2027-09-06", "c": true, "p": 2, "k": "travel", "note": "Labor Day is Mon 9/6. The Nebraska State Fair (Grand Island) ends Labor Day (estimated).", "hook": "🌽 Labor Day weekend: last big travel weekend of summer.", "lead": 0, "tags": ["#LaborDay", "#LaborDayWeekend"], "bonus": [], "slots": ["commercial", "all"]}, {"n": "River City Rodeo", "s": "2027-09-17", "e": "2027-09-18", "c": false, "p": 1, "k": "sports", "note": "Estimated mid-September Fri–Sat at CHI Health Center.", "hook": "🤠 River City Rodeo weekend.", "lead": 0, "tags": ["#RiverCityRodeo"], "bonus": [], "slots": ["all"]}, {"n": "U.S. Air Force Birthday", "s": "2027-09-18", "e": "2027-09-18", "c": true, "p": 3, "k": "military", "note": "80th birthday (founded 1947). A big one for Offutt's followers.", "hook": "🎂 Happy 80th birthday, U.S. Air Force! Here's what flew over Offutt.", "lead": 0, "tags": ["#USAF80", "#AirForceBirthday", "#OffuttAFB", "#55thWing"], "bonus": ["'80 years of the Air Force' military flights recap"], "slots": ["military", "all"]}, {"n": "Omaha Marathon", "s": "2027-09-26", "e": "2027-09-26", "c": false, "p": 1, "k": "sports", "note": "Estimated: the last Sunday of September.", "hook": "🏃 Omaha Marathon day. Runners on the ground, planes overhead.", "lead": 0, "tags": ["#OmahaMarathon"], "bonus": [], "slots": ["all"]}, {"n": "Veterans Day", "s": "2027-11-11", "e": "2027-11-11", "c": true, "p": 4, "k": "military", "note": "", "hook": "🇺🇸 Happy Veterans Day. Thank you to all who served.", "lead": 0, "tags": ["#VeteransDay", "#ThankAVeteran", "#OffuttAFB"], "bonus": [], "slots": ["military", "all"]}, {"n": "Thanksgiving travel rush", "s": "2027-11-23", "e": "2027-11-28", "c": true, "p": 4, "k": "travel", "note": "Wed 11/24 is the busiest travel day; Sun 11/28 is the return peak.", "hook": "🦃 Thanksgiving travel week at Eppley. Where is Omaha headed?", "lead": 3, "tags": ["#Thanksgiving", "#HolidayTravel"], "bonus": ["Wed: 'Busiest day of the year' post", "Sun: 'Everyone's coming home' map"], "slots": ["commercial", "all"]}, {"n": "Holiday Lights Festival", "s": "2027-11-25", "e": "2028-01-02", "c": false, "p": 1, "k": "local", "note": "", "hook": "✨ Holiday Lights Festival season downtown.", "lead": 0, "tags": ["#HolidayLightsFestival", "#OmahaHolidays"], "bonus": [], "slots": ["all"]}, {"n": "Wright Brothers Day", "s": "2027-12-17", "e": "2027-12-17", "c": true, "p": 2, "k": "aviation", "note": "", "hook": "✈️ 124 years since the first powered flight. Here's how far Omaha flew today.", "lead": 0, "tags": ["#WrightBrothersDay", "#AvGeek"], "bonus": [], "slots": ["all"]}, {"n": "Christmas travel", "s": "2027-12-17", "e": "2027-12-27", "c": true, "p": 3, "k": "travel", "note": "Christmas is Saturday; the federal holiday is Fri 12/24.", "hook": "🎄 Holiday travel season at Eppley. Where is Omaha going for Christmas?", "lead": 0, "tags": ["#HolidayTravel", "#ChristmasTravel"], "bonus": [], "slots": ["commercial", "all"]}, {"n": "NORAD Tracks Santa", "s": "2027-12-24", "e": "2027-12-24", "c": true, "p": 5, "k": "peak", "note": "", "hook": "🎅 Keep your eyes on the sky tonight: one unregistered aircraft is expected over Omaha. 🦌", "lead": 0, "tags": ["#NORADSanta", "#SantaTracker", "#ChristmasEve"], "bonus": ["6 PM post: joke 'Santa' route on the All-planes map"], "slots": ["all_posts"]}]
+;
+const KINDS = {peak:"Peak weekends",sports:"Sports",travel:"Travel & holidays",military:"Military",aviation:"Aviation days",local:"Local"};
+const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const d = s => { const [y,m,dd] = s.split("-").map(Number); return new Date(y, m-1, dd); };
+const fmt = (s,e) => { const a=d(s), b=d(e); if (s===e) return `${M[a.getMonth()]} ${a.getDate()}`;
+  return a.getMonth()===b.getMonth() ? `${M[a.getMonth()]} ${a.getDate()}–${b.getDate()}` : `${M[a.getMonth()]} ${a.getDate()} – ${M[b.getMonth()]} ${b.getDate()}`; };
+const esc = t => String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const today = new Date(); today.setHours(0,0,0,0);
+const sorted = EVENTS.slice().sort((a,b)=> a.s.localeCompare(b.s) || b.p-a.p);
+
+// next up
+const nextEl = document.getElementById("next");
+sorted.filter(e => d(e.e) >= today).slice(0,3).forEach(e => {
+  const days = Math.round((d(e.s)-today)/864e5);
+  const inTxt = days<=0 ? "Happening now" : days===1 ? "Tomorrow" : `In ${days} days`;
+  nextEl.insertAdjacentHTML("beforeend", `<div class="nx k-${e.k} ${e.p>=5?"peak":""}"><span class="when"><span class="dot"></span> ${fmt(e.s,e.e)}${e.c?"":" · est."}</span><span class="name">${esc(e.n)}</span><span class="in">${inTxt}</span></div>`);
+});
+
+// filters
+let active = "all";
+const fEl = document.getElementById("filters");
+[["all","All"], ...Object.entries(KINDS)].forEach(([k,label]) => {
+  const n = k==="all" ? EVENTS.length : EVENTS.filter(e=>e.k===k).length;
+  const b = document.createElement("button"); b.type="button"; b.id="f-"+k;
+  b.className = "k-"+k; b.setAttribute("aria-pressed", k===active);
+  b.innerHTML = (k==="all"?"":'<span class="dot"></span>') + `${label} <span aria-hidden="true">${n}</span>`;
+  b.onclick = () => { active=k; fEl.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", x===b)); render();
+    try{localStorage.setItem("sb-filter",k)}catch(_){}};
+  fEl.append(b);
+});
+try{ const saved=localStorage.getItem("sb-filter"); if(saved && document.getElementById("f-"+saved)) { active=saved; fEl.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", x.id==="f-"+saved)); } }catch(_){}
+
+function render(){
+  const cal = document.getElementById("cal"); cal.innerHTML = "";
+  let cur = "", box;
+  sorted.filter(e => active==="all" || e.k===active).forEach(e => {
+    const s = d(e.s), key = s.getFullYear()+"-"+s.getMonth();
+    if (key!==cur) { cur=key; box=document.createElement("div"); box.className="month";
+      box.innerHTML=`<h3>${MONTHS[s.getMonth()]} <span>${s.getFullYear()}</span></h3>`; cal.append(box); }
+    const past = d(e.e) < today;
+    const badges = [e.p>=5?'<span class="b pk">Peak</span>':'', e.c?'':'<span class="b est">est.</span>',
+      e.lead?`<span class="b">${e.lead}-day lead-up</span>`:'', past?'<span class="b">Past</span>':''].join("");
+    const slots = (e.slots||[]).includes("all_posts") ? "All four posts" :
+      (e.slots||[]).map(s=>({commercial:"Commercial",private:"Private jets",military:"Military",all:"All planes"}[s])).join(" · ");
+    box.insertAdjacentHTML("beforeend", `<details class="ev k-${e.k}" ${past?'style="opacity:.55"':''}>
+      <summary><span class="dates"><span class="dot"></span>${fmt(e.s,e.e)}</span><span class="en">${esc(e.n)}</span><span class="badges">${badges}</span></summary>
+      <div class="evbody">${e.note?`<p class="note">${esc(e.note)}</p>`:""}
+        ${e.hook?`<p class="hook">${esc(e.hook)}</p>`:""}
+        <div><div class="lbl">Posts affected</div>${esc(slots)}</div>
+        ${e.bonus.length?`<div><div class="lbl">Bonus post ideas</div><ul>${e.bonus.map(b=>`<li>${esc(b)}</li>`).join("")}</ul></div>`:""}
+        ${e.tags.length?`<div class="tags">${e.tags.map(esc).join(" ")}</div>`:""}
+      </div></details>`);
+  });
+}
+render();
+</script>

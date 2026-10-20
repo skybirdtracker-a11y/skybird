@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block style %}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{background:transparent;color:var(--muted);border:0;border-right:1px solid var(--line);font:600 14px system-ui;padding:8px 14px;min-height:40px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+.pchip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;min-height:40px;cursor:pointer;font-size:14px;background:transparent;color:var(--muted)}
+.pchip[aria-pressed="true"]{color:var(--text);border-color:var(--muted)}
+.pchip[aria-pressed="false"] .plat::before{background:transparent;border:1.5px solid var(--c)}
+.upd{font:12px var(--mono);color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}
+.kpi{padding:14px 16px}
+.kpi .v{font:italic 900 34px/1 var(--display);color:var(--navy);font-variant-numeric:tabular-nums;margin-top:6px}
+.kpi .s{font:12px var(--mono);color:var(--muted);margin-top:4px}
+.charts{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+@media(max-width:860px){.charts{grid-template-columns:minmax(0,1fr)}}
+.chart{padding:16px;position:relative;display:flex;flex-direction:column;gap:10px}
+.chart h2{font-size:22px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.legend .k{display:inline-flex;align-items:center;gap:6px}
+.legend .k i{width:14px;height:2px;background:var(--c);display:inline-block;border-radius:1px}
+svg text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
+svg .grid line{stroke:#E3E8EE;stroke-width:1}
+svg .axis{stroke:#C5CFDA}
+.tip{position:absolute;pointer-events:none;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;min-width:140px;z-index:3;box-shadow:0 6px 18px rgba(10,37,64,.12)}
+.tip .h{font:600 11px var(--mono);color:var(--muted);letter-spacing:1px;margin-bottom:4px}
+.tip .r{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.tip .r i{width:12px;height:2px;background:var(--c);display:inline-block}
+.tip .r b{font-variant-numeric:tabular-nums}
+.tip .r span{color:var(--muted);flex:1}
+details summary{cursor:pointer;color:var(--muted);font-size:13px}
+.loading{opacity:.5;transition:opacity .2s}
+.ins{display:flex;flex-direction:column;gap:12px}
+.heads{margin:0;padding:14px 16px 14px 34px;display:flex;flex-direction:column;gap:6px}
+.heads li{font-size:15.5px}
+.mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+.mini .chart h3,.tcard h3{font:italic 900 19px/1.1 var(--display);color:var(--navy);margin:0}
+.times{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+.tcard{padding:16px;display:flex;flex-direction:column;gap:8px;position:relative}
+.tcard .now{font:600 13px var(--mono);color:var(--muted)}
+.st{font:600 11px var(--mono);letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:6px;white-space:nowrap;align-self:flex-start}
+.st.learning{background:var(--raised);color:var(--muted)}.st.keep{background:#E3F2EA;color:var(--ok)}.st.switch{background:#FFF0DF;color:#8A4A00}
+.tog{display:flex;gap:18px;flex-wrap:wrap}
+{% endblock %}
+{% block main %}
+<div>
+  <h1>Engagement</h1>
+  <p class="lede">How every video SkyBird posted is doing, what's working best, and the best time to post. Numbers come from Buffer and refresh every 3 hours; tap Refresh numbers for the latest.</p>
+</div>
+
+<section class="ins" aria-labelledby="insh">
+  <div><h2 id="insh">What's working</h2>
+    <p class="upd" id="insnote" style="margin:4px 0 0"></p></div>
+  <ul class="card heads" id="heads"></ul>
+  <div class="mini">
+    <section class="card chart"><h3>By post</h3><p class="upd" style="margin:0">Views vs your typical post</p><div id="m-slot" style="position:relative"></div></section>
+    <section class="card chart"><h3>By caption style</h3><p class="upd" style="margin:0">Views vs your typical post</p><div id="m-voice" style="position:relative"></div></section>
+    <section class="card chart"><h3>By day of week</h3><p class="upd" style="margin:0">Views vs your typical post</p><div id="m-day" style="position:relative"></div></section>
+  </div>
+  <h2 style="margin-top:8px">Caption &amp; tagging tests</h2>
+  <p class="upd" style="margin:0">Which caption styles, calls to action and @tags bring followers. Shares + saves and follows are the strongest signs; comments show whether the Guess style works.</p>
+  <div class="tablewrap"><table id="tests"></table></div>
+  <h2 style="margin-top:8px">Best time to post</h2>
+  <div class="tog">
+    <label class="switch"><input type="checkbox" id="tt"> Test nearby times (each post moves 1-2 hours about one day in 3)</label>
+    <label class="switch"><input type="checkbox" id="at"> Switch to a better time automatically</label>
+  </div>
+  <div class="times" id="times"></div>
+  <details><summary>Show best-time data as a table</summary><div class="tablewrap" style="margin-top:8px"><table id="ttable"></table></div></details>
+</section>
+
+<h2 style="margin-top:12px">All posts</h2>
+<div class="filters" role="group" aria-label="Filters">
+  <div class="seg" id="range" role="group" aria-label="Date range">
+    <button type="button" data-d="7">7 days</button><button type="button" data-d="30">30 days</button><button type="button" data-d="90">90 days</button>
+  </div>
+  {% for p in platforms %}<button type="button" class="pchip" data-p="{{p}}" aria-pressed="true"><span class="plat p-{{p}}">{{ label[p] }}</span></button>{% endfor %}
+  <span style="flex:1"></span>
+  <span class="upd" id="upd"></span>
+  <button class="btn small" id="refresh" type="button">Refresh numbers</button>
+</div>
+<div id="content" style="margin-top:4px">
+  <div class="kpis" id="kpis"></div>
+  <div class="charts" style="margin-top:12px">
+    <section class="card chart" aria-labelledby="c1h">
+      <h2 id="c1h">Daily views by platform</h2>
+      <div class="legend" id="legend"></div>
+      <div id="c1" style="position:relative"></div>
+      <details><summary>Show as a table</summary><div class="tablewrap" style="margin-top:8px"><table id="c1table"></table></div></details>
+    </section>
+  </div>
+  <section style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+    <h2>Top posts</h2>
+    <div class="tablewrap"><table id="top"></table></div>
+  </section>
+</div>
+<div class="empty" id="empty" hidden><h2>No engagement numbers yet</h2>
+  <p id="emptymsg"></p></div>
+{% endblock %}
+{% block script %}
+<script>
+const LABEL = {{ label|tojson }};
+const COLOR = {instagram:'var(--ig)',facebook:'var(--fb)',tiktok:'var(--tt)'};
+const DRY = {{ 'true' if dry_run else 'false' }};
+let days = 30; try{days = +localStorage.getItem('sb-days') || 30}catch(_){}
+let plats = new Set({{ platforms|tojson }});
+const fmt = n => n>=1e6 ? (n/1e6).toFixed(1).replace(/\.0$/,'')+'M' : n>=1e4 ? Math.round(n/1e3)+'K' : n>=1e3 ? (n/1e3).toFixed(1).replace(/\.0$/,'')+'K' : String(Math.round(n));
+const full = n => Math.round(n).toLocaleString();
+const el = (tag, attrs={}, text) => { const e=document.createElementNS(tag==='div'||tag==='span'||tag==='b'||tag==='i'?'http://www.w3.org/1999/xhtml':'http://www.w3.org/2000/svg', tag); for(const k in attrs) e.setAttribute(k, attrs[k]); if(text!=null) e.textContent=text; return e; };
+const shortDate = s => { const [y,m,d]=s.split('-').map(Number); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]+' '+d; };
+function niceStep(v){ if(v<=0) return 1; const p=Math.pow(10,Math.floor(Math.log10(v))); const n=v/p; return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p; }
+function niceMax(v){ return niceStep(v/4)*Math.ceil(v/niceStep(v/4)); }
+
+async function load(){
+  document.getElementById('content').classList.add('loading');
+  const r = await fetch('/api/engagement?days='+days+'&platforms='+[...plats].join(','));
+  const data = await r.json();
+  document.getElementById('content').classList.remove('loading');
+  render(data);
+}
+
+function render(data){
+  document.querySelectorAll('#range button').forEach(b=>b.setAttribute('aria-pressed', +b.dataset.d===days));
+  document.getElementById('upd').textContent = data.updated ? 'Updated '+data.updated : '';
+  const empty = data.posts===0;
+  document.getElementById('content').hidden = empty; document.getElementById('empty').hidden = !empty;
+  if(empty){ document.getElementById('emptymsg').textContent = DRY
+      ? 'SkyBird is in dry run, so nothing has really been posted yet. Numbers appear here after your first live posts.'
+      : 'Nothing posted in this date range yet, or the numbers haven\'t been fetched. Tap Refresh numbers.'; return; }
+
+  // KPI tiles
+  const t = data.totals, k = document.getElementById('kpis'); k.innerHTML='';
+  [['Views',t.views,'Across '+data.posts+' platform posts'],['Likes',t.likes,''],['Comments',t.comments,''],['Shares',t.shares,'TikTok + Instagram'],
+   ['Avg views / post', data.posts? t.views/data.posts : 0, 'Per platform post']].forEach(([n,v,s])=>{
+    const d=document.createElement('div'); d.className='card kpi';
+    const a=document.createElement('div'); a.className='lbl'; a.textContent=n;
+    const b=document.createElement('div'); b.className='v'; b.textContent=fmt(v||0); b.title=full(v||0);
+    const c=document.createElement('div'); c.className='s'; c.textContent=s;
+    d.append(a,b,c); k.append(d);
+  });
+  lineChart(data); topTable(data);
+}
+
+function lineChart(data){
+  const box=document.getElementById('c1'); box.innerHTML='';
+  let last=data.dates.length-1; while(last>0 && !data.daily[data.dates[last]]) last--;
+  data={...data, dates:data.dates.slice(0,last+1)};
+  const series=[...plats].filter(p=>data.dates.some(d=>(data.daily[d]||{})[p]!=null));
+  const lg=document.getElementById('legend'); lg.innerHTML='';
+  series.forEach(p=>{const s=document.createElement('span');s.className='k';s.style.setProperty('--c',COLOR[p]);const i=document.createElement('i');s.append(i,LABEL[p]);lg.append(s)});
+  const W=Math.max(300, box.clientWidth||600), H=240, m={t:10,r:series.length<=4?74:14,b:26,l:44};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b, n=data.dates.length;
+  const val=(d,p)=>(data.daily[d]||{})[p]||0;
+  const max=niceMax(Math.max(1,...data.dates.flatMap(d=>series.map(p=>val(d,p)))));
+  const x=i=>m.l+(n<=1?iw/2:i*iw/(n-1)), y=v=>m.t+ih-(v/max)*ih;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',height:H,role:'img','aria-label':'Daily views by platform'});
+  const g=el('g',{class:'grid'});
+  const stepV=niceStep(max/4), ticks=Math.round(max/stepV);
+  for(let i=0;i<=ticks;i++){const v=stepV*i;g.append(el('line',{x1:m.l,x2:m.l+iw,y1:y(v),y2:y(v)}));const tx=el('text',{x:m.l-8,y:y(v)+4,'text-anchor':'end'},fmt(v));svg.append(tx)}
+  svg.prepend(g);
+  const step=Math.max(1,Math.ceil(n/Math.max(2,Math.min(6,Math.floor(iw/64)))));  // ~64px per date label
+  data.dates.forEach((d,i)=>{ if((i%step===0&&(n-1-i)>=step)||i===n-1){ svg.append(el('text',{x:x(i),y:H-8,'text-anchor':i===0?'start':i===n-1?'end':'middle'},shortDate(d))) }});
+  const ends=[];
+  series.forEach(p=>{
+    const pts=data.dates.map((d,i)=>`${x(i)},${y(val(d,p))}`).join(' ');
+    svg.append(el('polyline',{points:pts,fill:'none',stroke:COLOR[p],'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+    const last=val(data.dates[n-1],p);
+    svg.append(el('circle',{cx:x(n-1),cy:y(last),r:4,fill:COLOR[p],stroke:'#FFFFFF','stroke-width':2}));
+    ends.push({p,y:y(last)});
+  });
+  // direct labels at the line ends, nudged apart
+  if(series.length<=4){ ends.sort((a,b)=>a.y-b.y); for(let i=1;i<ends.length;i++) if(ends[i].y-ends[i-1].y<14) ends[i].y=ends[i-1].y+14;
+    const over=ends.length?ends[ends.length-1].y-(m.t+ih):0; if(over>0) ends.forEach(e=>e.y-=over);
+    ends.forEach(e=>{ svg.append(el('text',{x:x(n-1)+8,y:e.y+4,style:'fill:var(--text)'},LABEL[e.p])) }); }
+  // crosshair + tooltip
+  const hair=el('line',{y1:m.t,y2:m.t+ih,stroke:'#8193A8','stroke-width':1,visibility:'hidden'});svg.append(hair);
+  const hit=el('rect',{x:m.l,y:m.t,width:iw,height:ih,fill:'transparent',tabindex:0,'aria-label':'Chart: move to see values'});svg.append(hit);
+  box.append(svg);
+  const tip=document.createElement('div');tip.className='tip';tip.hidden=true;box.append(tip);
+  const show=i=>{ hair.setAttribute('x1',x(i));hair.setAttribute('x2',x(i));hair.setAttribute('visibility','visible');
+    tip.replaceChildren(); const h=document.createElement('div');h.className='h';h.textContent=shortDate(data.dates[i]);tip.append(h);
+    series.forEach(p=>{const r=document.createElement('div');r.className='r';r.style.setProperty('--c',COLOR[p]);const ic=document.createElement('i');const s=document.createElement('span');s.textContent=LABEL[p];const b=document.createElement('b');b.textContent=full(val(data.dates[i],p));r.append(ic,s,b);tip.append(r)});
+    tip.hidden=false; const scale=box.clientWidth/W; let left=x(i)*scale+12; if(left+160>box.clientWidth) left=x(i)*scale-172; tip.style.left=left+'px'; tip.style.top='8px'; };
+  const idx=ev=>{const r=svg.getBoundingClientRect();const px=(ev.clientX-r.left)*W/r.width;return Math.max(0,Math.min(n-1,Math.round((px-m.l)/(iw/(Math.max(1,n-1))))))};
+  let cur=n-1;
+  hit.addEventListener('pointermove',ev=>{cur=idx(ev);show(cur)});
+  hit.addEventListener('pointerleave',()=>{tip.hidden=true;hair.setAttribute('visibility','hidden')});
+  hit.addEventListener('focus',()=>show(cur)); hit.addEventListener('blur',()=>{tip.hidden=true;hair.setAttribute('visibility','hidden')});
+  hit.addEventListener('keydown',ev=>{if(ev.key==='ArrowLeft'){cur=Math.max(0,cur-1);show(cur)}if(ev.key==='ArrowRight'){cur=Math.min(n-1,cur+1);show(cur)}});
+  // table view
+  const tb=document.getElementById('c1table'); tb.replaceChildren();
+  const hr=document.createElement('tr'); ['Date',...series.map(p=>LABEL[p])].forEach((h,i)=>{const th=document.createElement('th');th.textContent=h;if(i)th.className='num';hr.append(th)}); tb.append(hr);
+  data.dates.slice().reverse().forEach(d=>{const tr=document.createElement('tr');const td=document.createElement('td');td.textContent=shortDate(d);tr.append(td);
+    series.forEach(p=>{const c=document.createElement('td');c.className='num';c.textContent=full(val(d,p));tr.append(c)});tb.append(tr)});
+}
+
+function topTable(data){
+  const tb=document.getElementById('top'); tb.replaceChildren();
+  const hr=document.createElement('tr');['Date','Post','Platform','Views','Likes','Comments','Shares',''].forEach((h,i)=>{const th=document.createElement('th');th.textContent=h;if(i>=3&&i<=6)th.className='num';hr.append(th)});tb.append(hr);
+  data.top.forEach(r=>{const tr=document.createElement('tr');
+    const cells=[shortDate(r.post_date),r.title||r.slot];cells.forEach(c=>{const td=document.createElement('td');td.textContent=c;tr.append(td)});
+    const pt=document.createElement('td');const ps=document.createElement('span');ps.className='plat p-'+r.platform;ps.textContent=LABEL[r.platform];pt.append(ps);tr.append(pt);
+    ['views','likes','comments','shares'].forEach(f=>{const td=document.createElement('td');td.className='num';td.textContent=r[f]==null?'–':full(r[f]);tr.append(td)});
+    const lt=document.createElement('td');if(r.url){const a=document.createElement('a');a.href=r.url;a.target='_blank';a.rel='noopener';a.textContent='Open';lt.append(a)}
+    if(r.error){const s=document.createElement('span');s.className='bad';s.textContent=' '+r.error;lt.append(s)}tr.append(lt);tb.append(tr)});
+}
+
+// ---- What's working ----------------------------------------------------------
+const pct = v => (v>=1?'+':'−')+Math.abs(Math.round((v-1)*100))+'%';
+function scoreBars(box, rows, label){
+  box.innerHTML='';
+  if(!rows.length){const p=document.createElement('p');p.className='upd';p.textContent='No measured posts yet';box.append(p);return}
+  const W=Math.max(240,box.clientWidth||300), rowH=40, H=rows.length*rowH+18, lab=0, right=52;
+  const max=Math.max(1.5,...rows.map(r=>r.score))*1.05, x=v=>(W-right)*v/max;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',height:H,role:'img','aria-label':label});
+  const tip=document.createElement('div');tip.className='tip';tip.hidden=true;
+  rows.forEach((r,i)=>{
+    const y0=i*rowH;
+    svg.append(el('text',{x:0,y:y0+13,style:'fill:var(--text);font-family:system-ui;font-size:13px'},r.label));
+    const g=el('g',{tabindex:0,'aria-label':`${r.label}: ${pct(r.score)} vs typical, ${r.n} posts`});
+    g.append(el('rect',{x:0,y:y0+16,width:W,height:22,fill:'transparent'}));
+    const bw=Math.max(4,x(r.score)); const bar=el('rect',{x:0,y:y0+19,width:bw,height:14,rx:3,fill:'var(--bird)'});g.append(bar);
+    g.append(el('text',{x:bw+6,y:y0+30,style:'fill:var(--text)'},pct(r.score)));
+    const on=()=>{bar.setAttribute('fill','var(--navy)');tip.replaceChildren();const h=document.createElement('div');h.className='h';h.textContent=r.label.toUpperCase();tip.append(h);
+      [['Vs typical',pct(r.score)],['Avg views',full(r.views)],['Engagement',(r.eng*100).toFixed(1)+'%'],['Posts',r.n]].forEach(([a,b])=>{const d=document.createElement('div');d.className='r';const s=document.createElement('span');s.textContent=a;const v=document.createElement('b');v.textContent=b;d.append(s,v);tip.append(d)});
+      tip.hidden=false;const sc=box.clientWidth/W;tip.style.left=Math.min(bw*sc+10,box.clientWidth-160)+'px';tip.style.top=(y0+rowH)*sc+'px'};
+    const off=()=>{bar.setAttribute('fill','var(--bird)');tip.hidden=true};
+    g.addEventListener('pointerenter',on);g.addEventListener('pointerleave',off);g.addEventListener('focus',on);g.addEventListener('blur',off);
+    svg.append(g);
+  });
+  // "typical" reference line at 1.0
+  svg.append(el('line',{x1:x(1),x2:x(1),y1:0,y2:H-14,stroke:'#8193A8','stroke-width':1,'stroke-dasharray':'3 3'}));
+  svg.append(el('text',{x:x(1),y:H-2,'text-anchor':'middle'},'typical'));
+  box.append(svg,tip);
+}
+function hourBars(box, t){
+  box.innerHTML='';
+  if(!t.hours.length){return}
+  const W=Math.max(220,box.clientWidth||280), H=120, m={t:16,b:22}, n=t.hours.length, bw=Math.min(36,(W-8)/n-6);
+  const max=Math.max(1.4,...t.hours.map(h=>h.score))*1.1, y=v=>m.t+(H-m.t-m.b)*(1-v/max);
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',height:H,role:'img','aria-label':t.title+' views by posting hour'});
+  const tip=document.createElement('div');tip.className='tip';tip.hidden=true;
+  svg.append(el('line',{x1:0,x2:W,y1:y(1),y2:y(1),stroke:'#8193A8','stroke-width':1,'stroke-dasharray':'3 3'}));
+  t.hours.forEach((h,i)=>{
+    const cx=(i+.5)*W/n, x0=cx-bw/2, top=y(h.score), base=H-m.b;
+    const usual=h.hour===t.current_hour, best=h.hour===t.best_hour;
+    const g=el('g',{tabindex:0,'aria-label':`${h.label}: ${pct(h.score)} vs typical, ${h.n} posts${usual?' (usual time)':''}`});
+    g.append(el('rect',{x:cx-W/n/2,y:0,width:W/n,height:H,fill:'transparent'}));
+    const bar=el('rect',{x:x0,y:top,width:bw,height:Math.max(2,base-top),rx:3,fill:best?'var(--orange)':'var(--bird)',opacity:h.n<3?.45:1});g.append(bar);
+    if(usual) g.append(el('rect',{x:x0-3,y:top-3,width:bw+6,height:Math.max(2,base-top)+3,rx:4,fill:'none',stroke:'var(--navy)','stroke-width':2}));
+    g.append(el('text',{x:cx,y:H-6,'text-anchor':'middle',style:usual||best?'fill:var(--text);font-weight:700':''},h.label.replace(' ','')));
+    if(usual||best) g.append(el('text',{x:cx,y:top-7,'text-anchor':'middle',style:'fill:var(--text)'},best&&!usual?pct(h.score):'usual'));
+    const on=()=>{tip.replaceChildren();const hd=document.createElement('div');hd.className='h';hd.textContent=h.label+(usual?' · USUAL':'');tip.append(hd);
+      [['Vs typical',pct(h.score)],['Avg views',full(h.views)],['Posts',h.n]].forEach(([a,b])=>{const d=document.createElement('div');d.className='r';const s=document.createElement('span');s.textContent=a;const v=document.createElement('b');v.textContent=b;d.append(s,v);tip.append(d)});
+      tip.hidden=false;const sc=box.clientWidth/W;tip.style.left=Math.max(0,Math.min(cx*sc-70,box.clientWidth-160))+'px';tip.style.top=(H*sc+4)+'px'};
+    const off=()=>{tip.hidden=true};
+    g.addEventListener('pointerenter',on);g.addEventListener('pointerleave',off);g.addEventListener('focus',on);g.addEventListener('blur',off);
+    svg.append(g);
+  });
+  box.append(svg,tip);
+}
+let INS=null;
+async function loadInsights(){
+  INS = await (await fetch('/api/insights')).json(); renderInsights();
+}
+function renderInsights(){
+  const d=INS; if(!d) return;
+  document.getElementById('insnote').textContent = d.measured
+    ? `Based on ${d.measured} post${d.measured>1?'s':''} at least 2 days old${d.waiting?`; ${d.waiting} newer still collecting views`:''}. Each post is compared with your typical views at the time, so account growth doesn't skew it.`
+    : (DRY ? 'SkyBird is in dry run, so there is nothing to measure yet.' : 'Posts are measured once they are 2 days old. The first insights show up after about a week of live posts.');
+  const hl=document.getElementById('heads'); hl.replaceChildren();
+  (d.headlines.length?d.headlines:[d.measured?'No clear winners yet. Patterns show up after a couple of weeks of posts.':'Nothing to compare yet.']).forEach(t=>{const li=document.createElement('li');li.textContent=t;hl.append(li)});
+  const order=['commercial','private','military','all'];
+  scoreBars(document.getElementById('m-slot'), d.by_slot.slice().sort((a,b)=>order.indexOf(a.key)-order.indexOf(b.key)), 'Views by post vs typical');
+  scoreBars(document.getElementById('m-voice'), d.by_voice, 'Views by caption style vs typical');
+  scoreBars(document.getElementById('m-day'), d.by_day, 'Views by day of week vs typical');
+  const tt=document.getElementById('tests'); tt.replaceChildren();
+  const th=document.createElement('tr');['','Posts','Views vs typical','Shares + saves / 1K views','Comments / post','Follows / post'].forEach((h,i)=>{const e=document.createElement('th');e.textContent=h;if(i)e.className='num';th.append(e)});tt.append(th);
+  let anyTest=false;
+  d.tests.forEach(g=>{ if(!g.rows.length) return; anyTest=true;
+    const gr=document.createElement('tr');const gc=document.createElement('td');gc.colSpan=6;gc.className='lbl';gc.style.paddingTop='14px';gc.textContent=g.group;gr.append(gc);tt.append(gr);
+    const best=Math.max(...g.rows.map(r=>r.ss_per_1k));
+    g.rows.slice().sort((a,b)=>b.score-a.score).forEach(r=>{const tr=document.createElement('tr');
+      [r.label,r.n,pct(r.score),r.ss_per_1k.toFixed(1)+(r.ss_per_1k===best&&g.rows.length>1&&best>0?' ★':''),r.comments.toFixed(1),r.follows==null?'–':r.follows.toFixed(1)].forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i)td.className='num';tr.append(td)});
+      tt.append(tr)})});
+  if(!anyTest){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.className='muted';td.textContent='Results show here once posts that used the new caption styles are 2 days old.';tr.append(td);tt.append(tr)}
+  document.getElementById('tt').checked=d.time_tests; document.getElementById('at').checked=d.auto_times;
+  const tw=document.getElementById('times'); tw.replaceChildren();
+  const tb=document.getElementById('ttable'); tb.replaceChildren();
+  const hr=document.createElement('tr');['Post','Hour','Posts','Vs typical','Avg views'].forEach((h,i)=>{const th=document.createElement('th');th.textContent=h;if(i>=2)th.className='num';hr.append(th)});tb.append(hr);
+  const draws=[];  // drawn once every card is in place, so each chart gets its real width
+  d.times.forEach(t=>{
+    const c=document.createElement('section');c.className='card tcard';
+    const h=document.createElement('h3');h.textContent=t.title;
+    const now=document.createElement('div');now.className='now';now.textContent='Usual time: '+t.current;
+    const st=document.createElement('span');st.className='st '+t.status;st.textContent=t.status==='switch'?`Try ${t.best} · +${t.lift}%`:t.status==='keep'?'Keep '+t.current:'Learning';
+    const note=document.createElement('div');note.className='upd';note.style.fontFamily='system-ui';note.style.fontSize='13.5px';note.textContent=t.note;
+    const box=document.createElement('div');box.style.position='relative';
+    c.append(h,now,st,box,note);
+    if(t.status==='switch'){const b=document.createElement('button');b.className='btn small primary';b.type='button';b.textContent='Post at '+t.best+' from now on';
+      b.addEventListener('click',async()=>{b.disabled=true;const mm=(t.current.match(/:(\d\d)/)||[0,'00'])[1];
+        try{await call('/api/settings',{times:{[t.key]:String(t.best_hour).padStart(2,'0')+':'+mm}});toast(t.title+' now posts at '+t.best);loadInsights()}catch(e){b.disabled=false}});
+      c.append(b)}
+    tw.append(c); draws.push(()=>hourBars(box,t));
+    t.hours.forEach(x=>{const tr=document.createElement('tr');[t.title,x.label+(x.hour===t.current_hour?' (usual)':''),x.n,pct(x.score),full(x.views)].forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i>=2)td.className='num';tr.append(td)});tb.append(tr)});
+  });
+  draws.forEach(f=>f());
+}
+document.getElementById('tt').addEventListener('change',e=>call('/api/settings',{time_tests:e.target.checked}).then(()=>toast(e.target.checked?'Time testing on':'Time testing off')));
+document.getElementById('at').addEventListener('change',e=>call('/api/settings',{auto_best_times:e.target.checked}).then(()=>toast(e.target.checked?'SkyBird will switch to better times and tell you':'Times only change when you tap the button')));
+loadInsights();
+
+document.querySelectorAll('#range button').forEach(b=>b.addEventListener('click',()=>{days=+b.dataset.d;try{localStorage.setItem('sb-days',days)}catch(_){}load()}));
+document.querySelectorAll('.pchip').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.p;if(plats.has(p)&&plats.size>1)plats.delete(p);else plats.add(p);
+  document.querySelectorAll('.pchip').forEach(x=>x.setAttribute('aria-pressed',plats.has(x.dataset.p)));load()}));
+document.getElementById('refresh').addEventListener('click',async e=>{e.target.disabled=true;toast('Fetching the latest numbers…');
+  try{await call('/api/engagement/refresh');await load();await loadInsights();toast('Numbers updated')}finally{e.target.disabled=false}});
+let rz;window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{load();renderInsights()},200)});
+load();
+</script>
+{% endblock %}

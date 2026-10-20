@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block style %}
+.top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.date{font-family:var(--mono);color:var(--muted);display:flex;gap:8px;align-items:center}
+.date a{color:var(--muted);text-decoration:none;padding:8px 12px;border:1px solid var(--line);border-radius:8px;min-height:40px;display:inline-flex;align-items:center}
+.events{display:flex;flex-direction:column;gap:8px}
+.event{border:1px solid var(--bird);border-radius:12px;padding:12px 14px;background:var(--raised)}
+.event b{color:var(--navy)}
+.event ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,540px),1fr));gap:16px}
+.post{display:flex;flex-direction:column;overflow:hidden}
+.post.approved{border-color:var(--navy)}.post.posted{border-color:var(--ok)}.post.skipped,.post.missed{opacity:.6}
+.head{display:flex;align-items:baseline;gap:12px;padding:14px 16px 8px;flex-wrap:wrap}
+.num{font-family:var(--mono);color:var(--bird);font-size:13px;letter-spacing:2px}
+.title{font:italic 900 28px/1 var(--display);color:var(--navy)}
+.time{margin-left:auto;font-family:var(--mono);font-size:15px}
+.by{font:12px var(--mono);color:var(--muted);padding:0 16px 8px}
+.body{display:grid;grid-template-columns:170px minmax(0,1fr);gap:14px;padding:0 16px 16px}
+@media(max-width:560px){.body{grid-template-columns:1fr}.vid{max-width:220px;margin:0 auto;width:100%}}
+.vid video,.vid .novid{width:100%;aspect-ratio:9/16;border-radius:10px;background:var(--raised);object-fit:cover;max-width:100%}
+.novid{display:grid;place-items:center;color:var(--bad);font-family:var(--mono);font-size:12px;text-align:center;padding:10px;border:1px dashed var(--bad)}
+.post .lbl{margin:12px 0 6px;display:block}
+.post .lbl.first{margin-top:0}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.opts label{cursor:pointer;position:relative}
+.opts input{position:absolute;opacity:0}
+.opts span{display:inline-block;padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;min-height:36px}
+.opts input:checked+span{border-color:var(--navy);color:var(--navy);background:var(--raised)}
+.opts input:focus-visible+span{outline:2px solid var(--bird)}
+textarea{width:100%;min-height:150px;resize:vertical;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font:14px/1.45 system-ui;margin-top:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;font-size:13px;cursor:pointer;min-height:32px}
+.chip input{accent-color:var(--navy)}
+.chip.event{border-color:var(--orange)}
+.add{display:flex;gap:6px;margin-top:6px}
+.add input{flex:1;min-width:0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px}
+.res{font-family:var(--mono);font-size:12px;margin-top:8px;display:flex;flex-direction:column;gap:3px}
+.count{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
+.actions{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line);margin-top:auto}
+.kit{border:1px solid var(--orange);border-radius:12px;margin:0 16px 16px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:#FFF6EC}
+.kit h3{margin:0;font:italic 900 22px/1 var(--display);color:var(--navy)}
+.kit .steps{font-size:14px;color:var(--muted);margin:0}
+.kit .pl{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+.kit textarea{min-height:90px;font-size:13px}
+.post.ready{border-color:var(--orange)}
+.status.catchup{background:var(--orange);color:var(--text)}
+.status.ready{background:var(--orange);color:var(--text)}
+.warn{color:var(--muted);font-size:13px;margin:0;overflow-wrap:anywhere}.warn code{font-family:var(--mono);color:var(--navy)}
+{% endblock %}
+{% block main %}
+<div class="top">
+  <div><h1>Approve posts</h1></div>
+  <div class="date"><a href="/?date={{prev}}" aria-label="Previous day">‹</a>{{ d.strftime('%a %b') }} {{ d.day }}<a href="/?date={{next}}" aria-label="Next day">›</a></div>
+  <span class="spacer" style="flex:1"></span>
+  {% if state and not rendering %}<button class="btn" id="recreate" type="button" title="Remake this day's 4 videos with the current SkyBird style">↻ Recreate videos</button>{% endif %}
+  {% if state %}{% set pending = state.posts.values()|selectattr('status','equalto','pending')|list %}
+  <button class="btn primary big" id="approveAll" {% if not pending %}disabled{% endif %}>{% if pending %}Approve all {{ pending|length }} ✓{% else %}Nothing waiting{% endif %}</button>{% endif %}
+</div>
+
+{% if rendering %}
+<div class="event"><b>Making the videos…</b>
+  <div>This takes about 10 minutes. The page refreshes itself; you can close it and come back.</div></div>
+<script>setTimeout(()=>location.reload(),15000)</script>
+{% endif %}
+{% if state and state.incomplete %}
+<div class="event" style="border-color:var(--bad);background:#FDECEA"><b style="color:var(--bad)">This day's flight data looks incomplete</b>
+  <div>{{ state.incomplete }} {% if opensky_on and d == today_date %}SkyBird fetches the data again every hour until 11:30 AM and remakes the videos, and sends you a note when they're fixed. Hold off approving until then; approving stops the re-checks.{% else %}The brand rule is to skip days like this.{% endif %} Auto-approve and pre-approvals are paused for it.</div></div>
+{% endif %}
+{% if state and state.sample %}
+<div class="event" style="border-color:var(--bad);background:#FDECEA"><b style="color:var(--bad)">Sample videos: fake flights, preview only</b>
+  <div>These show what the videos look like. They can't be posted live. Connect OpenSky in <a href="/settings#os">Settings</a>, then tap <b>Make videos now</b>.</div></div>
+{% endif %}
+{% if state and not rendering and (state.posts.values()|rejectattr('video_exists')|list) %}
+<div class="event" style="border-color:var(--line);background:var(--card)"><b style="color:var(--text)">Some videos are missing for this day</b>
+  <div>Expected in <code>{{ state.media_folder }}</code></div>
+  <div class="row" style="margin-top:8px"><button class="btn primary small" onclick="makeVideos(false)">Make videos now</button>
+    <button class="btn small" onclick="makeVideos(true)">Make sample videos (preview)</button></div></div>
+{% endif %}
+{% if dry_posts %}
+<div class="event" style="border-color:var(--orange);background:#FFF6EC"><b style="color:var(--text)">{{ dry_posts|length }} post{{ 's' if dry_posts|length > 1 }} only went out as a dry run</b>
+  <div>Nothing was uploaded: SkyBird was in dry run (practice mode) when {{ 'they' if dry_posts|length > 1 else 'it' }} "posted".
+  {% if can_redo %}Tap below to post {{ 'them' if dry_posts|length > 1 else 'it' }} for real. The first goes out within a minute and the rest catch up {{ (cfg.catchup_gap.total_seconds() // 60)|int }} minutes apart.
+  {% elif dry_run %}Turn on <b>Live</b> in <a href="/settings">Settings</a> first, then come back here.{% else %}Only today's posts can be sent for real.{% endif %}</div>
+  {% if can_redo %}<div class="row" style="margin-top:8px"><button class="btn primary small" id="forReal" type="button">Post {{ 'them' if dry_posts|length > 1 else 'it' }} for real</button></div>{% endif %}</div>
+{% endif %}
+{% if state and state.events %}<div class="events">{% for e in state.events %}
+  <div class="event"><b>{{ '▲ Coming up: ' if e.phase=='lead_up' else '● Today: ' }}{{ e.name }}</b>{% if not e.confirmed %} <span class="pill">date estimated</span>{% endif %}
+  {% if e.note %}<div>{{ e.note }}</div>{% endif %}
+  {% if e.bonus_posts %}<ul>{% for b in e.bonus_posts %}<li>Bonus post idea: {{ b }}</li>{% endfor %}</ul>{% endif %}</div>
+{% endfor %}</div>{% endif %}
+
+{% if not state %}
+<div class="empty"><h2>No posts built for this day yet</h2>
+<p>They build automatically at {{ cfg.general.get('prepare_time','06:00') }} each morning. To decide ahead of time, use the <a href="/upcoming">Upcoming</a> tab.</p>
+<div class="row" style="justify-content:center">
+  <button class="btn primary" onclick="makeVideos(false)" {% if rendering %}disabled{% endif %}>Make videos + build posts</button>
+  <button class="btn" onclick="prep(false)">Build posts from videos already in the folder</button>
+  <button class="btn" onclick="makeVideos(true)" {% if rendering %}disabled{% endif %}>Make sample videos (preview)</button></div></div>
+{% else %}
+{% if not state.stats_found %}<p class="warn">No stats.json found in <code>{{ state.media_folder }}</code>, so the captions use generic numbers.</p>{% endif %}
+<div class="grid">
+{% for key, p in state.posts.items() %}
+<section class="card post {{ p.status }}" data-slot="{{ key }}">
+  <div class="head"><span class="num">0{{ loop.index }}</span><span class="title">{{ p.title }}</span>
+    {% set pl = planned.get(key) %}
+    {% if pl and pl.catchup %}
+    <span class="time" title="Normally {{ fmt_time(p.time) }}"><s class="muted">{{ fmt_time(p.time) }}</s> {{ pl.at }}</span><span class="status catchup">{{ 'too late today' if pl.past_cutoff else 'catch-up' }}</span>
+    {% endif %}
+    {% if not (pl and pl.catchup) %}<span class="time"{% if p.time_test %} title="Usually {{ fmt_time(p.usual_time) }}. Testing a different time to learn when your posts do best (Engagement tab)."{% endif %}>{{ fmt_time(p.time) }}</span>{% if p.time_test %}<span class="status catchup">time test</span>{% endif %}{% endif %}{% if key in dry_posts %}<span class="status catchup" title="Dry run: nothing was uploaded">dry run only</span>{% else %}<span class="status {{ p.status }}">{{ p.status }}</span>{% endif %}</div>
+  {% if p.note %}<div class="by" style="color:var(--bad)">{{ p.note }}</div>{% endif %}
+  {% if p.decided_by %}<div class="by">{{ p.decided_by|replace('-', ' ')|capitalize }}{% if p.decided_by == 'plan' %}: skipped from Upcoming{% endif %}</div>{% endif %}
+  {% set kit = p.results.items()|selectattr('1.manual')|rejectattr('1.ok')|list if p.results else [] %}
+  {% if kit %}
+  <div class="kit">
+    <h3>Post kit: ready to post</h3>
+    <p class="steps">1. Save the video to your phone. 2. Copy the caption. 3. Open the app, make a Reel/post, paste the caption. 4. Tap "I posted it".</p>
+    <div class="row"><a class="btn primary" href="/video/{{ d }}/{{ key }}?download=1">Save video</a></div>
+    {% for plat, r in kit %}
+    <div class="pl" data-platform="{{ plat }}">
+      <span class="plat p-{{plat}}"><b>{{ label[plat] }}</b></span>
+      <textarea readonly aria-label="{{ label[plat] }} caption">{{ caption_for(p, plat) }}</textarea>
+      <div class="row"><button class="btn small copy" type="button">Copy caption</button>
+        <button class="btn small done" type="button">I posted it</button></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="body">
+    <div class="vid">{% if p.video_exists %}<video src="/video/{{ d }}/{{ key }}" controls playsinline muted preload="metadata"></video>
+      {% else %}<div class="novid">Video missing<br>{{ p.video.replace('\\','/').split('/')[-1] }}</div>{% endif %}</div>
+    <div>
+      <span class="lbl first">Caption option</span>
+      <div class="opts">{% for o in p.options %}<label><input type="radio" name="opt-{{key}}" value="{{ o.id }}" {% if o.id==p.choice %}checked{% endif %}><span>{{ o.label }}</span></label>{% endfor %}</div>
+      <textarea class="caption" aria-label="Caption for {{ p.title }}">{{ p.caption }}</textarea>
+      <div class="count"></div>
+      <span class="lbl">Hashtags</span>
+      <div class="chips tags">{% for h in p.hashtags %}<label class="chip {{ 'event' if h.source=='event' }}"><input type="checkbox" value="{{ h.tag }}" {% if h.checked %}checked{% endif %}>{{ h.tag }}</label>{% endfor %}</div>
+      <div class="add"><input placeholder="#AddYourOwn" aria-label="Add a hashtag"><button class="btn small addtag" type="button">Add</button></div>
+      {% if p.platforms.tiktok %}<div class="muted" style="font-size:13px;margin-top:4px"><span class="plat p-tiktok">TikTok</span> allows 5, so it gets: <b>{{ tiktok_tags(p)|join(' ') }}</b>{% if p.status in ['pending','approved'] %} (updates when you save){% endif %}</div>{% endif %}
+      <span class="lbl">Tag accounts</span>
+      {% set ns = namespace(any=false) %}
+      {% for plat in platforms %}{% if p.mentions[plat] %}{% set ns.any = true %}
+        <div class="chips mentions" data-platform="{{ plat }}" style="margin-bottom:6px"><span class="plat p-{{plat}}">{{ label[plat] }}</span>{% for m in p.mentions[plat] %}<label class="chip"{% if m.why %} title="{{ m.why|capitalize }}"{% endif %}><input type="checkbox" value="{{ m.handle }}" {% if m.checked %}checked{% endif %}>{{ m.handle }}</label>{% endfor %}</div>
+      {% endif %}{% endfor %}
+      {% if not ns.any %}<div class="muted" style="font-size:13px">No accounts to tag yet. Add handles in <a href="/settings#tags">Settings</a>.</div>{% endif %}
+      <span class="lbl">Post to</span>
+      <div class="chips">{% for plat in platforms %}<label class="chip"><input type="checkbox" class="platsel" value="{{ plat }}" {% if p.platforms[plat] %}checked{% endif %}><span class="plat p-{{plat}}">{{ label[plat] }}</span></label>{% endfor %}</div>
+      {% if p.results %}<div class="res">{% for plat, r in p.results.items() %}
+        {% if r.ok %}<span class="ok">✓ {{ label[plat] }} {{ r.at[11:16] }} {% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">view</a>{% endif %} {{ r.detail }}</span>
+        {% elif r.manual %}<span style="color:var(--text)">● {{ label[plat] }}: waiting for you to post it (post kit above)</span>
+        {% else %}<span class="bad">✕ {{ label[plat] }}: {{ r.error }}</span>{% endif %}{% endfor %}</div>{% endif %}
+    </div>
+  </div>
+  <div class="actions">
+    {% if p.status in ['pending','skipped','missed'] %}
+      <button class="btn primary" data-act="approve">Approve</button>
+      <button class="btn" data-act="save">Save edits</button>
+      {% if p.status=='pending' %}<button class="btn" data-act="skip">Skip</button>{% else %}<button class="btn" data-act="reset">Back to pending</button>{% endif %}
+      <button class="btn" data-act="post-now" data-confirm="1">Post now</button>
+    {% elif p.status=='approved' %}
+      <button class="btn" data-act="reset">Un-approve</button>
+      <button class="btn" data-act="save">Save edits</button>
+      <button class="btn" data-act="post-now" data-confirm="1">Post now</button>
+    {% elif p.status in ['partial','failed'] %}
+      <button class="btn primary" data-act="retry">Retry failed</button>
+    {% elif p.status=='posting' %}<span class="pill">Posting…</span>
+    {% elif key in dry_posts and can_redo %}
+      <button class="btn primary" data-act="for-real">Post for real</button>{% endif %}
+  </div>
+</section>
+{% endfor %}
+</div>
+<p><button class="btn" onclick="prep(true)">Rebuild captions from latest data</button></p>
+{% endif %}
+{% endblock %}
+{% block script %}
+<script>
+const D = "{{ d }}";
+const POSTS = {{ (state.posts if state else {})|tojson }};
+async function makeVideos(demo){toast(demo?'Making sample videos…':'Making the videos…');await call('/api/'+D+'/make-videos',{demo});setTimeout(()=>location.reload(),1200)}
+const rc=document.getElementById('recreate');
+if(rc)rc.addEventListener('click',async()=>{
+  if(rc.dataset.armed!=='1'){rc.dataset.armed='1';rc.textContent='Tap again: remake all 4 videos';setTimeout(()=>{rc.dataset.armed='';rc.textContent='↻ Recreate videos'},4000);return}
+  rc.disabled=true;try{await makeVideos(false)}catch(e){rc.disabled=false}
+});
+async function prep(force){toast('Building…');await call('/api/'+D+'/prepare',{force});location.reload()}
+function collect(card){
+  const slot=card.dataset.slot;
+  const choice=(card.querySelector('input[name="opt-'+slot+'"]:checked')||{}).value;
+  const mentions={};card.querySelectorAll('.mentions').forEach(m=>{mentions[m.dataset.platform]=[...m.querySelectorAll('input:checked')].map(i=>i.value)});
+  const platforms={};card.querySelectorAll('.platsel').forEach(i=>platforms[i.value]=i.checked);
+  return {choice,caption:card.querySelector('.caption').value,hashtags:[...card.querySelectorAll('.tags input:checked')].map(i=>i.value),mentions,platforms};
+}
+function counter(card){const n=card.querySelector('.caption').value.length+card.querySelectorAll('.tags input:checked').length*14;card.querySelector('.count').textContent='≈ '+n+' / 2,200 characters'}
+document.querySelectorAll('.post').forEach(card=>{
+  const slot=card.dataset.slot;counter(card);card.addEventListener('input',()=>counter(card));
+  card.querySelectorAll('input[name="opt-'+slot+'"]').forEach(r=>r.addEventListener('change',()=>{const o=POSTS[slot].options.find(o=>o.id===r.value);if(o){card.querySelector('.caption').value=o.text;counter(card)}}));
+  card.querySelector('.addtag').addEventListener('click',()=>{const inp=card.querySelector('.add input');let t=inp.value.trim().replace(/\s+/g,'');if(!t)return;if(!t.startsWith('#'))t='#'+t;
+    const l=document.createElement('label');l.className='chip';const i=document.createElement('input');i.type='checkbox';i.checked=true;i.value=t;l.append(i,t);card.querySelector('.tags').append(l);inp.value='';counter(card)});
+  card.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',async()=>{
+    const act=b.dataset.act;
+    if(b.dataset.confirm&&b.dataset.armed!=='1'){b.dataset.armed='1';const t=b.textContent;b.textContent='Tap again to post';setTimeout(()=>{b.dataset.armed='';b.textContent=t},3000);return}
+    b.disabled=true;
+    try{await call('/api/'+D+'/'+slot+'/'+act,collect(card));toast(act==='save'?'Saved':act==='post-now'?'Posting now':'Done');setTimeout(()=>location.reload(),700)}catch(e){b.disabled=false}
+  }));
+});
+document.querySelectorAll('.kit .pl').forEach(pl=>{
+  const card=pl.closest('.post'), slot=card.dataset.slot, ta=pl.querySelector('textarea');
+  pl.querySelector('.copy').addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(ta.value);toast('Caption copied')}
+    catch(_){ta.focus();ta.select();try{document.execCommand('copy');toast('Caption copied')}catch(e){toast('Select the text and copy it')}}
+  });
+  pl.querySelector('.done').addEventListener('click',async e=>{e.target.disabled=true;
+    try{await call('/api/'+D+'/'+slot+'/mark-posted',{platform:pl.dataset.platform});toast('Marked as posted');setTimeout(()=>location.reload(),600)}catch(_){e.target.disabled=false}});
+});
+const fr=document.getElementById('forReal');
+if(fr)fr.addEventListener('click',async()=>{fr.disabled=true;
+  try{const j=await call('/api/'+D+'/for-real');toast('Queued '+j.queued.length+' to post for real');setTimeout(()=>location.reload(),800)}catch(e){fr.disabled=false}});
+const all=document.getElementById('approveAll');
+if(all)all.addEventListener('click',async()=>{const posts={};document.querySelectorAll('.post.pending').forEach(c=>posts[c.dataset.slot]=collect(c));all.disabled=true;
+  try{const j=await call('/api/'+D+'/approve-all',{posts});toast('Approved '+j.approved.length+' posts');setTimeout(()=>location.reload(),800)}catch(e){all.disabled=false}});
+</script>
+{% endblock %}

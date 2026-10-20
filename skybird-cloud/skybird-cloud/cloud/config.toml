@@ -1,0 +1,164 @@
+# SkyBird - cloud settings (used by GitHub Actions; your PC uses its own config.toml)
+#
+# Change post times, hashtags or tags here, commit, and the next morning's run uses them.
+# Keys are NOT in this file: they live in GitHub → Settings → Secrets and variables → Actions.
+
+[cloud]
+# true = on days OpenSky's data looks incomplete, schedule nothing (you get a notification)
+# false = schedule anyway and warn you, so you can delete them in Buffer if they look wrong
+skip_incomplete = false
+
+# SkyBird auto-poster settings. Copy to config.toml and edit.
+# Secrets (tokens, app secrets) do NOT go here: they live in secrets.json,
+# which the `meta-setup` and `tiktok-auth` commands write for you.
+
+[general]
+brand_name = "SkyBird - Omaha"
+handle = "@skybirdomaha"
+timezone = "America/Chicago"      # all post times below are Central time
+# true = nothing is actually posted; every step is logged instead.
+# Leave this on until the accounts are connected and a test post looks right.
+dry_run = false
+data_dir = "data"                 # state, captions and logs (relative to this file)
+# When the morning package is built (captions generated, dashboard ready for approval)
+prepare_time = "06:00"
+# Each day's flights are counted from 3:30 AM to 3:29 AM the next morning.
+flight_day_start = "03:30"
+# If you approve AFTER some time slots have passed:
+#   "catch_up" = the missed posts go out one by one, the first right away and each
+#                next one at least `catchup_gap_minutes` after the one before
+#                (later posts keep at least that gap too); "skip" = don't post them
+late_approval = "catch_up"
+catchup_gap_minutes = 60
+# Nothing posts after this time; a catch-up that wouldn't fit is marked missed
+last_post_time = "22:00"
+
+[server]
+host = "127.0.0.1"                # use "0.0.0.0" to approve from your phone on home Wi-Fi
+port = 8787
+open_browser_on_prepare = true
+
+[media]
+# Folder the four daily videos (and stats.json) are saved into. Names start with the flight
+# day, e.g. 2026-09-29_post1_commercial.mp4. (Put {data_date} in the path instead if you'd
+# rather have one subfolder per day.)
+folder = "videos"
+stats_file = "stats.json"
+# The videos show yesterday's flights by default (-1). Use 0 for same-day.
+data_day_offset = -1
+# Optional: command that renders the four videos before captions are built.
+# Runs from the folder this config file is in. Leave blank if you render separately.
+render_command = ""
+# render_command = 'python "C:/Users/joshu/OneDrive/Desktop/Flight Visibility/Flight Visibility Data Company/render_daily.py" --date {data_date}'
+
+# ---- The four daily posts -------------------------------------------------
+[slots.commercial]
+title = "Eppley · Commercial"
+time = "09:00"
+file = "post1_commercial.mp4"
+platforms = ["instagram", "facebook", "tiktok"]
+
+[slots.private]
+title = "Private jets"
+time = "11:00"
+file = "post2_private.mp4"
+platforms = ["instagram", "facebook", "tiktok"]
+
+[slots.military]
+title = "Offutt · Military"
+time = "13:00"
+file = "post3_military.mp4"
+platforms = ["instagram", "facebook", "tiktok"]
+
+[slots.all]
+title = "All airports + planes"
+time = "18:00"
+file = "post4_all.mp4"
+platforms = ["instagram", "facebook", "tiktok"]
+
+# ---- How posts get published ----------------------------------------------
+[publisher]
+# "buffer"      = through buffer.com's FREE plan (3 channels = IG + FB + TikTok). No developer
+#                 accounts: connect the 3 accounts in Buffer, then run scripts\connect_accounts.bat.
+# "upload_post" = through upload-post.com. No Meta/TikTok developer accounts needed:
+#                 link your 3 accounts on their website and paste an API key
+#                 (python -m skybird uploadpost-setup).
+# "manual"      = free. At each time slot SkyBird readies a "post kit" on the
+#                 dashboard (video + caption); you post from your phone in ~30 s.
+# "direct"      = your own Meta + TikTok developer apps (meta-setup / tiktok-auth).
+backend = "buffer"
+
+[upload_post]
+profile = "skybird"              # the profile name you created on upload-post.com
+facebook_page_id = ""            # filled in by uploadpost-setup (needed if you manage more than one Page)
+tiktok_post_mode = "DIRECT_POST" # or "MEDIA_UPLOAD" = lands in TikTok drafts for you to finish
+tiktok_privacy_level = ""        # blank = the account's default (usually public)
+
+# ---- Phone notifications (free) ------------------------------------------------
+# Install the "ntfy" app, subscribe to the topic below, and your phone buzzes when
+# the morning posts are ready to approve, when a manual post kit is ready,
+# and if a post fails. Tapping the notification opens the dashboard.
+[notify]
+ntfy_topic = ""          # e.g. "skybird-omaha-7q4m2" (make it hard to guess; anyone with it can read the alerts)
+dashboard_url = ""       # e.g. "http://desktop-joshu:8787" (Tailscale name) or "http://192.168.1.20:8787"
+
+# ---- Platforms ------------------------------------------------------------
+[instagram]
+enabled = true
+share_to_feed = true              # Reel also shows on the profile grid
+graph_version = "v23.0"
+
+[facebook]
+enabled = true
+graph_version = "v23.0"
+
+[tiktok]
+enabled = true
+# "direct" publishes straight to the profile (needs TikTok's app audit to be public;
+#          before the audit TikTok forces posts to "only me").
+# "inbox"  sends the video to your TikTok inbox/drafts; you tap Post in the app.
+mode = "inbox"
+privacy_level = "PUBLIC_TO_EVERYONE"
+disable_comment = false
+disable_duet = false
+disable_stitch = false
+
+# ---- Hashtags & tags --------------------------------------------------------
+# Every tag listed here shows up as a checkbox in the approval dashboard.
+# "default" tags start checked; "optional" ones start unchecked.
+[hashtags.common]
+default = ["#SkyBirdOmaha", "#Omaha", "#Nebraska", "#avgeek", "#aviation", "#planespotting"]
+optional = ["#OmahaNebraska", "#402", "#FlightTracking"]
+
+[hashtags.commercial]
+default = ["#EppleyAirfield", "#OMA", "#OmahaAirport", "#travel"]
+optional = ["#TravelNebraska", "#airport"]
+
+[hashtags.private]
+default = ["#privatejet", "#bizjet", "#businessaviation", "#EppleyAirfield", "#CouncilBluffs"]
+optional = ["#privateaviation", "#Millard"]
+
+[hashtags.military]
+default = ["#OffuttAFB", "#Offutt", "#55thWing", "#USAF", "#AirForce", "#Bellevue", "#militaryaviation"]
+optional = []
+
+[hashtags.all]
+default = ["#EppleyAirfield", "#CouncilBluffs", "#Millard", "#OffuttAFB", "#generalaviation", "#OmahaMetro", "#Iowa"]
+optional = ["#PlaneSpotting"]
+
+# TikTok allows only 5 hashtags. SkyBird picks the best 5 of the checked ones
+# for each post: these first (brand, city, subject, then broad tags), with any
+# tag you type in yourself and the day's event tag (#CWS etc.) moved up front.
+[hashtags.tiktok]
+commercial = ["#SkyBirdOmaha", "#Omaha", "#EppleyAirfield", "#avgeek", "#planespotting"]
+private = ["#SkyBirdOmaha", "#Omaha", "#privatejet", "#avgeek", "#aviation"]
+military = ["#SkyBirdOmaha", "#Omaha", "#OffuttAFB", "#USAF", "#militaryaviation"]
+all = ["#SkyBirdOmaha", "#Omaha", "#avgeek", "#aviation", "#planespotting"]
+
+# Accounts to @mention (added to the caption; each one is a checkbox in the dashboard).
+# Put handles in WITHOUT verifying them here = risk tagging the wrong account, so
+# look each one up on the platform first. Handles differ per platform.
+[mentions]
+instagram = []   # e.g. ["@eppley_handle", "@offutt_handle"]
+facebook = []
+tiktok = []

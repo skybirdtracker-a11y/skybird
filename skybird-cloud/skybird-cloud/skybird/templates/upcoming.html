@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block style %}
+.days{display:flex;flex-direction:column;gap:12px}
+.day{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.day.today{border-color:var(--navy)}
+.dh{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dh h2{font-size:24px}
+.dh .rel{font:600 12px var(--mono);color:var(--bird);letter-spacing:1px;text-transform:uppercase}
+.evs{display:flex;gap:6px;flex-wrap:wrap}
+.ev{font-size:13px;border:1px solid var(--orange);color:var(--text);background:#FFF6EC;border-radius:999px;padding:3px 10px}
+.ev.lead{border-style:dashed}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:8px}
+.slot{background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.slot .t{display:flex;align-items:baseline;gap:8px}
+.slot .t b{font:italic 900 18px/1 var(--display);color:var(--navy)}
+.slot .t span{font:12px var(--mono);color:var(--muted);margin-left:auto}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{flex:1;background:transparent;color:var(--muted);border:0;border-right:1px solid var(--line);font:600 13px system-ui;padding:8px 4px;min-height:36px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+.seg button.appr[aria-pressed="true"]{background:var(--navy);color:#fff}
+.note{font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+.dayact{display:flex;gap:8px;flex-wrap:wrap}
+{% endblock %}
+{% block main %}
+<div>
+  <h1>Upcoming posts</h1>
+  <p class="lede">The next {{ days|length }} days, four posts each. Decide ahead of time here. <b>Approve</b> here pre-approves the post, so it goes out automatically once its video is ready; <b>Skip</b> means it won't post that day. Anything left on <b>Ask me</b> waits for your tap on the Approve tab.</p>
+</div>
+<div class="days">
+{% for day in days %}
+<section class="card day {{ 'today' if day.is_today }}" data-date="{{ day.date }}">
+  <div class="dh">
+    <h2>{{ day.label }}</h2>{% if day.rel %}<span class="rel">{{ day.rel }}</span>{% endif %}
+    <span style="flex:1"></span>
+    {% if day.built %}<a class="btn small" href="/?date={{ day.date }}">Review &amp; edit</a>{% endif %}
+  </div>
+  {% if day.events %}<div class="evs">{% for e in day.events %}<span class="ev {{ 'lead' if e.phase=='lead_up' }}">{{ 'Lead-up: ' if e.phase=='lead_up' }}{{ e.name }}</span>{% endfor %}</div>{% endif %}
+  <div class="slots">
+  {% for s in day.slots %}
+    <div class="slot" data-slot="{{ s.key }}">
+      <div class="t"><b>{{ s.title }}</b><span>{{ s.time }}</span></div>
+      {% if s.status %}
+        <div class="row"><span class="status {{ s.status }}">{{ s.status }}</span>{% if s.results %}<span class="note">{{ s.results }}</span>{% endif %}</div>
+      {% else %}
+        <div class="seg" role="group" aria-label="{{ s.title }} on {{ day.label }}">
+          <button type="button" data-v="" aria-pressed="{{ 'true' if not s.plan else 'false' }}">Ask me</button>
+          <button type="button" class="appr" data-v="approve" aria-pressed="{{ 'true' if s.plan=='approve' else 'false' }}">Approve</button>
+          <button type="button" data-v="skip" aria-pressed="{{ 'true' if s.plan=='skip' else 'false' }}">Skip</button>
+        </div>
+        {% if s.auto and not s.plan %}<span class="note">Auto-approve is on for this post (Settings)</span>{% endif %}
+      {% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  {% if not day.built %}<div class="dayact">
+    <button class="btn small" data-all="approve">Pre-approve all 4</button>
+    <button class="btn small" data-all="skip">Skip whole day</button>
+    <button class="btn small" data-all="">Reset</button>
+  </div>{% endif %}
+</section>
+{% endfor %}
+</div>
+{% endblock %}
+{% block script %}
+<script>
+document.querySelectorAll('.day').forEach(day=>{
+  const d=day.dataset.date;
+  const setSeg=(slotEl,v)=>slotEl.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v===v));
+  day.querySelectorAll('.slot').forEach(slotEl=>slotEl.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',async()=>{
+    await call('/api/plan',{date:d,slot:slotEl.dataset.slot,decision:b.dataset.v||null});
+    setSeg(slotEl,b.dataset.v);toast(b.dataset.v==='approve'?'Pre-approved':b.dataset.v==='skip'?'Will skip':'Will ask you');
+  })));
+  day.querySelectorAll('[data-all]').forEach(b=>b.addEventListener('click',async()=>{
+    const v=b.dataset.all;
+    for(const slotEl of day.querySelectorAll('.slot')){if(!slotEl.querySelector('.seg'))continue;
+      await call('/api/plan',{date:d,slot:slotEl.dataset.slot,decision:v||null});setSeg(slotEl,v)}
+    toast(v==='approve'?'Whole day pre-approved':v==='skip'?'Whole day skipped':'Reset');
+  }));
+});
+</script>
+{% endblock %}

@@ -12,11 +12,21 @@ import requests
 from .config import Config
 
 
+LAST = {"result": ""}   # what happened to the last notification (for the test button)
+
+
+def topic_of(cfg: Config) -> str:
+    """The topic, without quotes or a pasted https://ntfy.sh/ in front."""
+    t = str(cfg.section("notify").get("ntfy_topic") or "").strip().strip('"\'').strip()
+    return t.rsplit("/", 1)[-1] if t.startswith("http") else t
+
+
 def send(cfg: Config, title: str, message: str, *, priority: str = "default", path: str = "/",
          click: str | None = None) -> bool:
     n = cfg.section("notify")
-    topic = (n.get("ntfy_topic") or "").strip()
+    topic = topic_of(cfg)
     if not topic:
+        LAST["result"] = "no ntfy topic set"
         return False
     server = n.get("ntfy_server", "https://ntfy.sh").rstrip("/")
     headers = {"Title": title.encode("utf-8"), "Priority": priority, "Tags": "airplane"}
@@ -27,7 +37,9 @@ def send(cfg: Config, title: str, message: str, *, priority: str = "default", pa
     elif url:
         headers["Click"] = url.rstrip("/") + path
     try:
-        requests.post(f"{server}/{topic}", data=message.encode("utf-8"), headers=headers, timeout=10)
-        return True
-    except requests.RequestException:
+        r = requests.post(f"{server}/{topic}", data=message.encode("utf-8"), headers=headers, timeout=10)
+        LAST["result"] = f"ntfy answered HTTP {r.status_code}" + ("" if r.ok else f": {r.text[:200]}")
+        return r.ok
+    except requests.RequestException as e:
+        LAST["result"] = f"couldn't reach ntfy: {type(e).__name__}"
         return False

@@ -244,3 +244,19 @@ def check_hosts(session=None) -> list[str]:
             if os.environ.get("GITHUB_ACTIONS"):
                 print(f"::notice title=Video host::{line}")
     return out
+
+
+def test_notify(cfg: Config) -> bool:
+    """Send one test notification; report whether ntfy accepted it (the topic itself stays secret)."""
+    load_env_secrets(cfg)
+    topic = notify.topic_of(cfg)
+    ok = notify.send(cfg, "SkyBird test notification",
+                     "If you see this, SkyBird's phone notifications work. Tap to open Buffer.", click=BUFFER_APP)
+    raw = str(cfg.section("notify").get("ntfy_topic") or "")
+    tidy = " (quotes or a link were removed from it)" if raw.strip() != topic else ""
+    line = (f"Topic set: {'yes, ' + str(len(topic)) + ' characters' + tidy if topic else 'NO - add the NTFY_TOPIC secret'}. "
+            f"Sent: {'yes' if ok else 'no'} - {notify.LAST['result']}")
+    print(line)
+    if os.environ.get("GITHUB_ACTIONS"):
+        print(f"::notice title=Notification test::{line}")
+    return ok

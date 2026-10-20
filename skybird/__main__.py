@@ -59,6 +59,7 @@ def main(argv=None):
     p.add_argument("--day", default="", help="post date to remake (YYYY-MM-DD; default today = yesterday's flights)")
     p.add_argument("--at", default="", help="post time HH:MM for --only posts (default: their usual time)")
     p.add_argument("--check-hosts", action="store_true", help="only test which video hosts accept uploads")
+    p.add_argument("--test-notify", action="store_true", help="only send a test phone notification")
     a = ap.parse_args(argv)
     if a.cmd == "cloud-run" and a.dry_run:
         import os
@@ -77,6 +78,10 @@ def main(argv=None):
         serve(cfg, with_scheduler=not a.no_scheduler)
     elif a.cmd == "cloud-run":
         from .cloud import run
+        if a.test_notify:
+            from .cloud import test_notify
+            test_notify(cfg)
+            return
         if a.check_hosts:
             from .cloud import check_hosts
             check_hosts()

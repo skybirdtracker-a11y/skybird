@@ -27,10 +27,27 @@ concurrency:
 
 jobs:
   daily:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      - name: Find SkyBird's files
+        # Works even if the files were uploaded inside a folder (e.g. skybird-cloud/)
+        run: |
+          if [ ! -f requirements.txt ]; then
+            found=$(find . -name requirements.txt -not -path './.git/*' | head -1)
+            if [ -z "$found" ]; then
+              echo "::error::SkyBird's files aren't in this repository. Upload the skybird and cloud folders, events.toml and requirements.txt."
+              exit 1
+            fi
+            dir=$(dirname "$found")
+            echo "SkyBird's files are in $dir; using them from there."
+            cp -r "$dir"/. .
+          fi
+          for f in skybird cloud/config.toml events.toml; do
+            [ -e "$f" ] || { echo "::error::Missing $f. Upload it to the repository."; exit 1; }
+          done
 
       - uses: actions/setup-python@v5
         with:

@@ -1,2 +1,2 @@
 """SkyBird - Omaha auto-poster."""
-VERSION = "2026.10.19-cloud"
+VERSION = "2026.10.20-remake"

@@ -55,6 +55,9 @@ def main(argv=None):
     p = sub.add_parser("cloud-run", help="GitHub Actions: make the videos and schedule them in Buffer")
     p.add_argument("--force", action="store_true", help="run even if today was already scheduled")
     p.add_argument("--dry-run", action="store_true", help="make everything but schedule nothing")
+    p.add_argument("--only", default="", help="remake + schedule just these posts, e.g. all or commercial,private")
+    p.add_argument("--day", default="", help="post date to remake (YYYY-MM-DD; default today = yesterday's flights)")
+    p.add_argument("--at", default="", help="post time HH:MM for --only posts (default: their usual time)")
     a = ap.parse_args(argv)
     if a.cmd == "cloud-run" and a.dry_run:
         import os
@@ -73,7 +76,9 @@ def main(argv=None):
         serve(cfg, with_scheduler=not a.no_scheduler)
     elif a.cmd == "cloud-run":
         from .cloud import run
-        run(cfg, force=a.force)
+        only = [x.strip() for x in a.only.replace("all posts", "").split(",") if x.strip()] or None
+        run(cfg, force=a.force, only=only, day=date.fromisoformat(a.day) if a.day.strip() else None,
+            at=a.at.strip() or None)
     elif a.cmd == "prepare":
         engine.prepare(cfg, _date(cfg, a.date), force=a.force, render=not a.no_render)
     elif a.cmd == "approve":

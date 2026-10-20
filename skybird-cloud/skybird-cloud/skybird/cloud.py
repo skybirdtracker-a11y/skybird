@@ -54,13 +54,23 @@ def connect_buffer(cfg: Config) -> dict:
     return found
 
 
-def plan(cfg: Config, day, now: datetime) -> dict:
+def plan(cfg: Config, day, now: datetime, only: list[str] | None = None, at: str | None = None) -> dict:
     """When each post goes out: its usual time, or (if the job ran late) catch-up
-    times an hour apart, the first ~10 minutes from now. Past the last post time = skipped."""
-    cutoff = datetime.combine(day, cfg.last_post_time, tzinfo=cfg.tz)
+    times an hour apart, the first ~10 minutes from now. Past the last post time = skipped.
+    `only` limits it to some posts; `at` ("18:30") sets the time for them (today)."""
+    cutoff = datetime.combine(now.date(), cfg.last_post_time, tzinfo=cfg.tz)
     out, prev = {}, None
     for slot in sorted(cfg.slots, key=lambda s: s.time):
-        t = max(engine.scheduled_at(cfg, day, slot.time), now + timedelta(minutes=10))
+        if only and slot.key not in only:
+            continue
+        if at:
+            hh, mm = at.strip().split(":")
+            want = datetime.combine(now.date(), datetime.min.time(), tzinfo=cfg.tz).replace(hour=int(hh), minute=int(mm))
+        elif day == now.date():
+            want = engine.scheduled_at(cfg, day, slot.time)
+        else:   # remaking an earlier day's post: today, at its usual time
+            want = engine.scheduled_at(cfg, now.date(), slot.time)
+        t = max(want, now + timedelta(minutes=10))
         if prev is not None:
             t = max(t, prev + cfg.catchup_gap)
         if t > cutoff:
@@ -70,9 +80,23 @@ def plan(cfg: Config, day, now: datetime) -> dict:
     return out
 
 
-def run(cfg: Config, *, force: bool = False, now: datetime | None = None) -> dict:
+def _eppley_counts(cfg: Config, day) -> str:
+    """'118 departures, 104 arrivals' from the day's stats.json (so you can judge the data)."""
+    import json
+    try:
+        st = json.loads(cfg.media_file(day, cfg.section("media").get("stats_file", "stats.json")).read_text(encoding="utf-8"))
+        c = st["posts"]["commercial"]
+        return f"{c.get('departures', '?')} airline departures, {c.get('arrivals', '?')} arrivals ({st.get('data_date', '')})"
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+
+
+def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
+        only: list[str] | None = None, day=None, at: str | None = None) -> dict:
+    """`only` = remake + schedule just these posts (e.g. ["all"]); `day` = the post date
+    whose videos to remake (default today: yesterday's flights); `at` = post time "HH:MM"."""
     now = now or engine.now_local(cfg)
-    today = now.date()
+    today = day or now.date()
     missing = load_env_secrets(cfg)
     if missing:
         raise SystemExit("Add these in GitHub → Settings → Secrets and variables → Actions: " + ", ".join(missing))
@@ -80,7 +104,8 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None) -> dic
     save_settings(cfg.data_dir, {"time_tests": False, "backend": "buffer"})
 
     st = load_state(cfg, today)
-    if st and not force and st.get("cloud_done"):
+    before = st
+    if st and not force and not only and st.get("cloud_done"):
         log(cfg, f"{today}: already scheduled earlier today; nothing to do")
         return {"skipped": "already done"}
 
@@ -88,6 +113,15 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None) -> dic
         found = connect_buffer(cfg)
         log(cfg, "Buffer channels: " + ", ".join(f"{p}={'yes' if p in found else 'missing'}" for p in PLATFORMS))
     st = engine.prepare(cfg, today, force=True, quiet=True)
+    if only and before:   # keep the other posts' records as they were (already scheduled)
+        with locked(cfg):
+            st = load_state(cfg, today)
+            for k, p in before.get("posts", {}).items():
+                if k not in only:
+                    st["posts"][k] = p
+            if before.get("cloud_done"):
+                st["cloud_done"] = before["cloud_done"]
+            save_state(cfg, today, st)
     if st.get("sample") or not any(p["video_exists"] for p in st["posts"].values()):
         msg = "The videos couldn't be made today (OpenSky didn't answer). Nothing was scheduled."
         notify.send(cfg, "SkyBird (cloud): no posts today", msg, priority="high", click=BUFFER_APP)
@@ -96,10 +130,12 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None) -> dic
         notify.send(cfg, "SkyBird (cloud): skipped today", st["incomplete"], priority="high", click=BUFFER_APP)
         return {"skipped": "incomplete data"}
 
-    times = plan(cfg, today, now)
+    times = plan(cfg, today, now, only, at)
     scheduled, problems = [], []
     for slot in sorted(cfg.slots, key=lambda s: s.time):
         post = st["posts"].get(slot.key)
+        if only and slot.key not in only:
+            continue
         if not post or not post["video_exists"] or slot.key not in times:
             continue
         due = times[slot.key]
@@ -141,11 +177,15 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None) -> dic
         log(cfg, f"{today} {slot.title}: scheduled for {when} on {', '.join(oks) or 'nothing'}" +
             (f"; failed {'; '.join(bad)}" if bad else ""))
 
-    with locked(cfg):
-        s2 = load_state(cfg, today)
-        s2["cloud_done"] = now.isoformat(timespec="seconds")
-        save_state(cfg, today, s2)
+    if not only:
+        with locked(cfg):
+            s2 = load_state(cfg, today)
+            s2["cloud_done"] = now.isoformat(timespec="seconds")
+            save_state(cfg, today, s2)
     body = ("Scheduled in Buffer:\n" + "\n".join(scheduled) if scheduled else "Nothing could be scheduled.")
+    eppley = _eppley_counts(cfg, today)
+    if eppley:
+        body += f"\n\nEppley: {eppley}"
     if st.get("incomplete"):
         body += "\n\n⚠️ " + st["incomplete"] + " Check the videos in Buffer; delete them if they look wrong."
     if problems:

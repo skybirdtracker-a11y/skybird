@@ -282,8 +282,9 @@ def post(video: Path, captions: dict[str, str], secrets: dict,
     if not video.exists():
         raise PublishError(f"Video not found: {video}")
     s = session or requests.Session()
-    # A scheduled post's link must outlive the wait (plus a margin) in case Buffer fetches it late
-    life = max(0.0, (due - datetime.now(timezone.utc)).total_seconds() / 3600) + 6 if due else 0
+    # Buffer copies the video the moment the post is created (a bad link fails right
+    # away), so even for a scheduled post the link only has to last a little while.
+    life = 0.5 if due else 0
     url, host = host_video(video, s, min_hours=life)
     used = [host]
     out = {}

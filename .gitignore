@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+config.toml
+!cloud/config.toml
+secrets.json
+cloud/secrets.json
+data/
+cloud/data/
+cloud/videos/
+.pytest_cache/

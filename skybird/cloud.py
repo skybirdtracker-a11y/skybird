@@ -15,6 +15,7 @@ Keys come from the repository's Actions secrets (never stored in the code):
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from .settings import save_settings
 from .state import APPROVED, POSTED, load_state, locked, log, save_state
 
 BUFFER_APP = "https://publish.buffer.com"
+RETRY_WAIT = 120
 
 
 def load_env_secrets(cfg: Config) -> list[str]:
@@ -151,10 +153,18 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
             res = {p: {"ok": True, "id": "dry-run", "detail": f"DRY RUN: would schedule for {due:%I:%M %p}"} for p in caps}
         else:
             from .publishers import buffer
-            try:
-                got = buffer.post(Path(post["video"]), caps, cfg.secrets, due=due)
-            except Exception as e:
-                got = {p: e for p in caps}
+            got = {}
+            for attempt in (1, 2):   # the free file hosts have bad minutes; wait and try once more
+                try:
+                    got = buffer.post(Path(post["video"]), caps, cfg.secrets, due=due)
+                except Exception as e:
+                    got = {p: e for p in caps}
+                hosting = all("temporary host" in str(getattr(r, "detail", "") or r) for r in got.values()
+                              if not getattr(r, "ok", False))
+                if attempt == 2 or any(getattr(r, "ok", False) for r in got.values()) or not hosting:
+                    break
+                log(cfg, f"{today} {slot.title}: the video hosts refused; trying again in 2 minutes")
+                time.sleep(RETRY_WAIT)
             res = {}
             for p, r in got.items():
                 if getattr(r, "ok", False):
@@ -169,7 +179,7 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
             engine._set_final_status(p2)
             save_state(cfg, today, s2)
         oks = [p for p, r in res.items() if r.get("ok")]
-        bad = [f"{p}: {r.get('error', '')[:120]}" for p, r in res.items() if not r.get("ok")]
+        bad = [f"{p}: {r.get('error', '')}" for p, r in res.items() if not r.get("ok")]
         when = due.strftime("%I:%M %p").lstrip("0")
         if oks:
             scheduled.append(f"{when} {slot.title} ({', '.join(oks)})")
@@ -189,7 +199,7 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     if st.get("incomplete"):
         body += "\n\n⚠️ " + st["incomplete"] + " Check the videos in Buffer; delete them if they look wrong."
     if problems:
-        body += "\n\nProblems:\n" + "\n".join(problems[:6])
+        body += "\n\nProblems:\n" + "\n".join(p[:300] for p in problems[:6])
     body += "\n\nReview, edit or delete them in the Buffer app."
     title = "SkyBird (cloud): " + (f"{len(scheduled)} posts scheduled" if scheduled else "nothing scheduled")
     notify.send(cfg, title + (" [dry run]" if cfg.dry_run else ""), body,

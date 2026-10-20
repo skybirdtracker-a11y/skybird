@@ -127,9 +127,16 @@ def fetch_opensky(cfg: Config, day: date, session=None) -> list[dict]:
     start, stop = cfg.flight_day(day)
     begin, end = int(start.timestamp()), int(stop.timestamp()) - 1
     seen, flights = set(), []
+    # Asked in 6-hour pieces rather than one day-long request: OpenSky's day-long
+    # answers have come back with most arrivals missing. Duplicates are dropped below.
+    step = 6 * 3600
+    pieces = [(b, min(b + step - 1, end)) for b in range(begin, end + 1, step)]
     for icao in METRO:
         for kind in ("departure", "arrival"):
-            for f in _get(cfg, s, f"/flights/{kind}", {"airport": icao, "begin": begin, "end": end}):
+            got = []
+            for b, e in pieces:
+                got += _get(cfg, s, f"/flights/{kind}", {"airport": icao, "begin": b, "end": e})
+            for f in got:
                 key = (f.get("icao24"), f.get("firstSeen"), f.get("lastSeen"))
                 if key in seen:
                     continue

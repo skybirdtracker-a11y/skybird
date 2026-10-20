@@ -108,7 +108,9 @@ def _get(cfg: Config, s, path: str, params: dict) -> list:
         if r.status_code == 404:
             return []  # OpenSky answers 404 when there are no flights
         if r.status_code == 429:
-            raise DataError("OpenSky's daily request limit is used up. Try again later or tomorrow.")
+            wait = r.headers.get("X-Rate-Limit-Retry-After-Seconds", "")
+            when = f" It resets in about {int(wait) // 3600}h {int(wait) % 3600 // 60}m." if wait.isdigit() else ""
+            raise DataError("OpenSky's daily request limit is used up." + when + " Try again then.")
         if r.status_code in (401, 403):
             raise DataError("OpenSky needs a (free) account for flight lists. Run: python -m skybird opensky-setup")
         if r.status_code >= 500 and attempt < 2:
@@ -127,15 +129,11 @@ def fetch_opensky(cfg: Config, day: date, session=None) -> list[dict]:
     start, stop = cfg.flight_day(day)
     begin, end = int(start.timestamp()), int(stop.timestamp()) - 1
     seen, flights = set(), []
-    # Asked in 6-hour pieces rather than one day-long request: OpenSky's day-long
-    # answers have come back with most arrivals missing. Duplicates are dropped below.
-    step = 6 * 3600
-    pieces = [(b, min(b + step - 1, end)) for b in range(begin, end + 1, step)]
+    # One request per airport and direction. (Asking in 6-hour pieces used 4x more of
+    # OpenSky's daily allowance and didn't bring back the missing arrivals.)
     for icao in METRO:
         for kind in ("departure", "arrival"):
-            got = []
-            for b, e in pieces:
-                got += _get(cfg, s, f"/flights/{kind}", {"airport": icao, "begin": b, "end": e})
+            got = _get(cfg, s, f"/flights/{kind}", {"airport": icao, "begin": begin, "end": end})
             for f in got:
                 key = (f.get("icao24"), f.get("firstSeen"), f.get("lastSeen"))
                 if key in seen:

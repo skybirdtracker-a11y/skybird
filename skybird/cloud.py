@@ -131,7 +131,8 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
                 st["cloud_done"] = before["cloud_done"]
             save_state(cfg, today, st)
     if st.get("sample") or not any(p["video_exists"] for p in st["posts"].values()):
-        msg = "The videos couldn't be made today (OpenSky didn't answer). Nothing was scheduled."
+        why = (engine._render_status(cfg, today).get("error") or "OpenSky didn't answer").strip()
+        msg = f"The videos couldn't be made today: {why[:500]} Nothing was scheduled."
         notify.send(cfg, "SkyBird (cloud): no posts today", msg, priority="high", click=BUFFER_APP)
         raise SystemExit(msg)
     if st.get("incomplete") and cfg.section("cloud").get("skip_incomplete", False):

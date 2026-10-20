@@ -20,6 +20,24 @@ on:
         description: "Run again even if today's posts were already scheduled"
         type: boolean
         default: false
+      only:
+        description: "Remake just one post (the others stay as scheduled)"
+        type: choice
+        default: "every post"
+        options:
+          - "every post"
+          - "commercial"
+          - "private"
+          - "military"
+          - "all (All airports + planes)"
+      day:
+        description: "Which day's post to remake, YYYY-MM-DD (blank = today's, showing yesterday's flights)"
+        type: string
+        default: ""
+      post_time:
+        description: "Post time today, HH:MM in 24h Central, e.g. 19:30 (blank = its usual time)"
+        type: string
+        default: ""
 
 concurrency:
   group: skybird
@@ -30,7 +48,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Find SkyBird's files
         # Works even if the files were uploaded inside a folder (e.g. skybird-cloud/)
@@ -49,7 +67,7 @@ jobs:
             [ -e "$f" ] || { echo "::error::Missing $f. Upload it to the repository."; exit 1; }
           done
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -58,7 +76,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore SkyBird's memory (aircraft types, tag history)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: cloud/data
           key: skybird-data-${{ github.run_id }}
@@ -70,21 +88,25 @@ jobs:
           OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-        run: >
-          python -m skybird --config cloud/config.toml cloud-run
-          ${{ inputs.force && '--force' || '' }}
-          ${{ inputs.dry_run && '--dry-run' || '' }}
+          ONLY: ${{ inputs.only }}
+          DAY: ${{ inputs.day }}
+          POST_TIME: ${{ inputs.post_time }}
+        run: |
+          only="${ONLY%% *}"; [ "$only" = "every" ] && only=""
+          python -m skybird --config cloud/config.toml cloud-run \
+            ${{ inputs.force && '--force' || '' }} ${{ inputs.dry_run && '--dry-run' || '' }} \
+            --only "$only" --day "$DAY" --at "$POST_TIME"
 
       - name: Save SkyBird's memory
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: cloud/data
           key: skybird-data-${{ github.run_id }}
 
       - name: Keep today's videos for 3 days (download them from this run's page)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skybird-videos-${{ github.run_number }}
           path: cloud/videos/*.mp4

@@ -61,10 +61,14 @@ def main(argv=None):
     p.add_argument("--check-hosts", action="store_true", help="only test which video hosts accept uploads")
     p.add_argument("--test-notify", action="store_true", help="only send a test phone notification")
     p.add_argument("--check-posts", action="store_true", help="only ask Buffer whether today's posts went out")
+    p.add_argument("--fresh-data", action="store_true", help="pull the flights from OpenSky again even if today's are saved")
     a = ap.parse_args(argv)
     if a.cmd == "cloud-run" and a.dry_run:
         import os
         os.environ["SKYBIRD_DRY_RUN"] = "1"
+    if a.cmd == "cloud-run" and a.fresh_data:
+        import os
+        os.environ["SKYBIRD_FRESH_DATA"] = "1"
     cfg = load_config(a.config)
     if sys.stdout is None or sys.stderr is None:  # started via pythonw (no console window)
         out = open(cfg.data_dir / "server.log", "a", encoding="utf-8", buffering=1)

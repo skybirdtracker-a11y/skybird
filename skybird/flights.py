@@ -74,6 +74,7 @@ def _token(cfg: Config, s) -> str | None:
         return None
     if sec.get("_opensky_token") and sec.get("_opensky_token_exp", 0) > time.time() + 60:
         return sec["_opensky_token"]
+    USED["login"] = USED.get("login", 0) + 1
     r = _call(s.post, TOKEN_URL, "the login server",
               data={"grant_type": "client_credentials", "client_id": cid, "client_secret": csec})
     if r.status_code != 200:
@@ -85,6 +86,27 @@ def _token(cfg: Config, s) -> str | None:
 
 
 NET_WAITS = (15, 45, 90)  # seconds between retries when OpenSky doesn't answer
+
+
+# Every OpenSky request this run makes is counted here, and there's a hard budget so a
+# run can never use up the account's daily allowance (the morning run needs it).
+MAX_REQUESTS = 260
+_HISTORY = {"on": False}   # set while backfilling Offutt's 7-day history (for the count)
+USED: dict[str, int] = {}
+
+
+def _spend(kind: str) -> None:
+    if sum(USED.values()) >= MAX_REQUESTS:
+        raise DataError(f"SkyBird's own limit of {MAX_REQUESTS} OpenSky requests per run was reached")
+    USED[kind] = USED.get(kind, 0) + 1
+
+
+def requests_used() -> str:
+    """'212 (flight lists 8, arrival fill-in 120, aircraft types 70, Offutt history 14)'"""
+    names = {"lists": "flight lists", "aircraft": "arrival fill-in", "metadata": "aircraft types",
+             "history": "Offutt history", "login": "login"}
+    parts = ", ".join(f"{names.get(k, k)} {v}" for k, v in USED.items())
+    return f"{sum(USED.values())}" + (f" ({parts})" if parts else "")
 
 
 def _call(method, url, what: str, **kw):
@@ -105,6 +127,7 @@ def _get(cfg: Config, s, path: str, params: dict) -> list:
     tok = _token(cfg, s)
     headers = {"Authorization": f"Bearer {tok}"} if tok else {}
     for attempt in range(3):
+        _spend("aircraft" if path.startswith("/flights/aircraft") else "history" if _HISTORY["on"] else "lists")
         r = _call(s.get, f"{API}{path}", "the flight-data server", params=params, headers=headers)
         if r.status_code == 404:
             return []  # OpenSky answers 404 when there are no flights
@@ -250,6 +273,13 @@ def fix_airline_fields(cfg: Config, raw: list[dict]) -> int:
     return n
 
 
+def eppley_arrivals(cfg: Config, raw: list[dict]) -> int:
+    """Airline arrivals at Eppley in a flight list (for the run's breakdown)."""
+    airlines, mil, excl = _lists(cfg)
+    return sum(1 for f in raw if f.get("estArrivalAirport") == HUB and f.get("estDepartureAirport") != HUB
+               and classify(f, airlines, mil, excl) == "commercial")
+
+
 MAX_ARRIVAL_LOOKUPS = 120   # OpenSky requests spent filling in missing arrivals each day
 
 
@@ -314,6 +344,10 @@ def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:
             pass
         for h in todo[:100]:   # at most 100 new aircraft a day (each one is a request)
             try:
+                try:
+                    _spend("metadata")
+                except DataError:
+                    break
                 r = session.get(f"{API}/metadata/aircraft/icao/{h}", headers=headers, timeout=20)
                 if r.status_code == 429:
                     break        # daily allowance used up: stop, and look the rest up another day
@@ -464,8 +498,12 @@ def military_week(cfg: Config, day: date, today_count: int, session=None, backfi
         try:
             start, stop = cfg.flight_day(d)
             b, e = int(start.timestamp()), int(stop.timestamp()) - 1
-            raw = _get(cfg, session, "/flights/departure", {"airport": "KOFF", "begin": b, "end": e}) + \
-                _get(cfg, session, "/flights/arrival", {"airport": "KOFF", "begin": b, "end": e})
+            _HISTORY["on"] = True
+            try:
+                raw = _get(cfg, session, "/flights/departure", {"airport": "KOFF", "begin": b, "end": e}) + \
+                    _get(cfg, session, "/flights/arrival", {"airport": "KOFF", "begin": b, "end": e})
+            finally:
+                _HISTORY["on"] = False
             n = sum(1 for f in raw if classify(f, airlines, mil, excl) == "military")
             hist.setdefault(d.isoformat(), {})["military"] = n
         except Exception:

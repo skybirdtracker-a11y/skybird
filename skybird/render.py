@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import math
 from datetime import date, datetime
 from pathlib import Path
@@ -825,15 +826,37 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     folder.mkdir(parents=True, exist_ok=True)
     log(cfg, f"Rendering {'SAMPLE ' if demo else ''}videos for flight day {flight_day} into {folder}")
     session = requests.Session()
+    breakdown = {}
+    fl.USED.clear()   # the request budget is per run (the PC keeps SkyBird running for days)
+    master = cfg.data_dir / "flights" / f"{flight_day.isoformat()}.json"
+    fresh = os.environ.get("SKYBIRD_FRESH_DATA") in ("1", "true", "yes")
     if demo:
         raw, info = fl.demo_raw(flight_day, cfg), {}
+    elif master.exists() and not fresh:
+        # Already pulled from OpenSky today: reuse it (no new requests), so remakes and
+        # backup runs never spend the daily allowance again.
+        saved = json.loads(master.read_text(encoding="utf-8"))
+        raw, breakdown = saved["flights"], saved.get("eppley_arrivals", {})
+        info = fl.aircraft_info(cfg, {f.get("icao24") for f in raw if f.get("icao24")}, None)
+        session = None   # nothing else may ask OpenSky either (e.g. the military history)
+        log(cfg, f"Using the flight list already pulled for {flight_day} ({len(raw)} flights; no OpenSky requests)")
     else:
-        # 1. All planes: every flight at the metro fields, plus the landings OpenSky missed.
-        #    This one list is the master record; the other posts are cut from it.
+        # 1. All planes: ONE pull of every flight at the metro fields, made complete
+        #    (Council Bluffs fix + landings OpenSky missed). This master list is saved and
+        #    every post (and any remake today) is cut from it.
         raw = fl.fetch_opensky(cfg, flight_day, session)
+        from_opensky = fl.eppley_arrivals(cfg, raw)
         fl.fix_airline_fields(cfg, raw)
+        after_fix = fl.eppley_arrivals(cfg, raw)
         raw += fl.infer_arrivals(cfg, raw, flight_day, session)
+        breakdown = {"from_opensky": from_opensky, "moved_from_council_bluffs": after_fix - from_opensky,
+                     "filled_in": fl.eppley_arrivals(cfg, raw) - after_fix}
+        breakdown["total"] = sum(breakdown.values())
         info = fl.aircraft_info(cfg, {f.get("icao24") for f in raw if f.get("icao24")}, session)
+        master.parent.mkdir(parents=True, exist_ok=True)
+        master.write_text(json.dumps({"flights": raw, "eppley_arrivals": breakdown}), encoding="utf-8")
+        for old in sorted(master.parent.glob("*.json"))[:-10]:   # keep the last 10 days
+            old.unlink(missing_ok=True)
     _save_flight_list(cfg, post_date, flight_day, raw)
     day = fl.build_day(cfg, raw, info)
     week = fl.military_week(cfg, flight_day, day["posts"]["military"]["stats"]["flights"],
@@ -853,6 +876,8 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     if not day["complete"]:
         log(cfg, "Heads up: " + day["why"])
     stats["inferred_arrivals"] = sum(1 for f in raw if f.get("inferred"))
+    stats["eppley_arrivals"] = breakdown
+    stats["opensky_requests"] = fl.requests_used() if not demo else "0 (sample data)"
     cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     fonts = Fonts()
     # Made in this order: All planes first (the full picture), then Eppley, private, military.

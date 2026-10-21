@@ -526,7 +526,13 @@ def redo_incomplete(cfg: Config, today: date, now: datetime) -> dict:
     marks[today.isoformat()] = m
     (cfg.data_dir / "redo_incomplete.json").write_text(json.dumps(marks, indent=1), encoding="utf-8")
     log(cfg, f"{today}: flight data looked incomplete; fetching it again and remaking the videos (try {m['n']} of {REDO_MAX})")
-    if run_render(cfg, today, force=True):
+    import os
+    os.environ["SKYBIRD_FRESH_DATA"] = "1"   # the point is to ask OpenSky again
+    try:
+        ok = run_render(cfg, today, force=True)
+    finally:
+        os.environ.pop("SKYBIRD_FRESH_DATA", None)
+    if ok:
         st = load_state(cfg, today)
         if st and any(p["status"] != PENDING for p in st["posts"].values()):
             log(cfg, f"{today}: you approved posts meanwhile, so the captions were left as they were")

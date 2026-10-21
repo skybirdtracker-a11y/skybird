@@ -90,7 +90,14 @@ def _eppley_counts(cfg: Config, day) -> str:
     try:
         st = json.loads(cfg.media_file(day, cfg.section("media").get("stats_file", "stats.json")).read_text(encoding="utf-8"))
         c = st["posts"]["commercial"]
-        return f"{c.get('departures', '?')} airline departures, {c.get('arrivals', '?')} arrivals ({st.get('data_date', '')})"
+        out = f"{c.get('departures', '?')} airline departures, {c.get('arrivals', '?')} arrivals ({st.get('data_date', '')})"
+        b = st.get("eppley_arrivals") or {}
+        if b:
+            out += (f". Arrivals: {b.get('from_opensky', 0)} from OpenSky + {b.get('moved_from_council_bluffs', 0)} "
+                    f"moved from Council Bluffs/Millard + {b.get('filled_in', 0)} filled in")
+        if st.get("opensky_requests"):
+            out += f". OpenSky requests this run: {st['opensky_requests']}"
+        return out
     except (OSError, ValueError, KeyError, TypeError):
         return ""
 

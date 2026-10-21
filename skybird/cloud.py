@@ -362,3 +362,35 @@ def check_posts(cfg: Config, now: datetime | None = None) -> list[str]:
                     "\n\nOpen Buffer to see why (often a missing video); you can re-post it from there.",
                     priority="high", click=BUFFER_APP)
     return lines
+
+
+BOARD = "https://www.flyoma.com/flight-information/arrivals-departures/"
+
+
+def probe_board(session=None) -> list[str]:
+    """Look at Eppley's arrivals/departures page and report where its flight list comes
+    from (script and data links), so SkyBird can compare its counts with the airport's."""
+    import re
+    import requests
+    from .publishers.buffer import UA
+    s = session or requests.Session()
+    out = []
+    try:
+        r = s.get(BOARD, headers={"User-Agent": UA}, timeout=30)
+        html = r.text
+        out.append(f"page: HTTP {r.status_code}, {len(html)} characters, type {r.headers.get('Content-Type', '')}")
+        links = set(re.findall(r"""(?:src|href|data-[\w-]+)=["']([^"']+)["']""", html))
+        links |= set(re.findall(r"""https?://[^"'\s<>]+""", html))
+        keep = sorted(u for u in links
+                      if re.search(r"(?i)flight|fids|arriv|depart|api|json|ajax|wp-json|\.js", u))
+        out += [f"link: {u[:200]}" for u in keep[:40]]
+        for m in re.findall(r"""(?i)(admin-ajax\.php[^"'\s]*|wp-json/[^"'\s]+|action["']?\s*[:=]\s*["'][\w-]+)""", html)[:15]:
+            out.append(f"hint: {m[:200]}")
+        out.append("text sample: " + re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))[:600])
+    except Exception as e:
+        out.append(f"couldn't load the page: {type(e).__name__}: {str(e)[:200]}")
+    for ln in out:
+        print(ln)
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::notice title=Airport board::{ln[:900]}")
+    return out

@@ -61,6 +61,7 @@ def main(argv=None):
     p.add_argument("--check-hosts", action="store_true", help="only test which video hosts accept uploads")
     p.add_argument("--test-notify", action="store_true", help="only send a test phone notification")
     p.add_argument("--check-posts", action="store_true", help="only ask Buffer whether today's posts went out")
+    p.add_argument("--probe-board", action="store_true", help="only look at Eppley's arrivals/departures page")
     p.add_argument("--fresh-data", action="store_true", help="pull the flights from OpenSky again even if today's are saved")
     a = ap.parse_args(argv)
     if a.cmd == "cloud-run" and a.dry_run:
@@ -83,6 +84,10 @@ def main(argv=None):
         serve(cfg, with_scheduler=not a.no_scheduler)
     elif a.cmd == "cloud-run":
         from .cloud import run
+        if a.probe_board:
+            from .cloud import probe_board
+            probe_board()
+            return
         if a.check_posts:
             from .cloud import check_posts
             check_posts(cfg)

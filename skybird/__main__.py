@@ -85,8 +85,9 @@ def main(argv=None):
     elif a.cmd == "cloud-run":
         from .cloud import run
         if a.probe_board:
-            from .cloud import probe_board
+            from .cloud import probe_board, snapshot_board
             probe_board()
+            snapshot_board(cfg)
             return
         if a.check_posts:
             from .cloud import check_posts

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from . import captions, engine, notify
@@ -129,6 +129,10 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
         log(cfg, f"{today}: already scheduled earlier today; nothing to do")
         return {"skipped": "already done"}
 
+    try:   # Eppley's own arrivals board: saved now, compared with SkyBird's count tomorrow
+        snapshot_board(cfg, now)
+    except Exception as e:
+        log(cfg, f"Couldn't read the airport's arrivals board: {e}")
     if not cfg.dry_run:
         found = connect_buffer(cfg)
         log(cfg, "Buffer channels: " + ", ".join(f"{p}={'yes' if p in found else 'missing'}" for p in PLATFORMS))
@@ -243,6 +247,11 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
         body += f"\n\nEppley: {eppley}"
         if os.environ.get("GITHUB_ACTIONS"):   # shows on the run's page (Annotations)
             print(f"::notice title=Eppley flights::{eppley}")
+    vs_board = compare_with_board(cfg, cfg.data_date(today))
+    if vs_board:
+        body += f"\n\n{vs_board}"
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::notice title=Airport board check::{vs_board[:950]}")
     if st.get("incomplete"):
         body += "\n\n⚠️ " + st["incomplete"] + " Check the videos in Buffer; delete them if they look wrong."
     if storage_note:
@@ -315,6 +324,11 @@ def check_posts(cfg: Config, now: datetime | None = None) -> list[str]:
         cfg.raw.setdefault("notify", {})["ntfy_topic"] = os.environ["NTFY_TOPIC"].strip()
     key = cfg.secrets.get("buffer_api_key")
     lines, alerts = [], []
+    try:
+        n = snapshot_board(cfg, now)
+        lines.append(f"airport arrivals board read: {n} flights")
+    except Exception as e:
+        lines.append(f"couldn't read the airport's arrivals board: {str(e)[:120]}")
     for day in (now.date() - _td(days=1), now.date()):
         st = load_state(cfg, day)
         if not st or not key:
@@ -391,27 +405,102 @@ def read_board(session=None) -> dict:
     return out
 
 
+# Airline names on the board -> callsign prefixes that may fly them (mainline + regionals)
+OPERATORS = {"southwest": ["SWA"], "american": ["AAL", "ENY", "SKW", "RPA", "JIA", "PDT", "ASH"],
+             "delta": ["DAL", "EDV", "SKW", "RPA", "ASH"], "united": ["UAL", "SKW", "RPA", "ASH", "GJS", "UCA"],
+             "alaska": ["ASA", "QXE", "SKW"], "allegiant": ["AAY"], "frontier": ["FFT"], "sun country": ["SCX"],
+             "breeze": ["MXY"], "spirit": ["NKS"], "jetblue": ["JBU"]}
+
+
+IATA = {"southwest": "WN", "american": "AA", "delta": "DL", "united": "UA", "alaska": "AS", "allegiant": "G4",
+        "frontier": "F9", "sun country": "SY", "breeze": "MX", "spirit": "NK", "jetblue": "B6"}
+
+
+def _board_time(txt: str, now: datetime):
+    """'3:10 PM' (today) or '10/22 3:25 PM' -> aware datetime."""
+    import re
+    m = re.search(r"(?:(\d{1,2})/(\d{1,2})\s+)?(\d{1,2}):(\d{2})\s*([AP]M)", txt or "", re.I)
+    if not m:
+        return None
+    mo, dd, hh, mm, ap = m.groups()
+    h = int(hh) % 12 + (12 if ap.upper() == "PM" else 0)
+    d = now.date()
+    if mo:
+        y = now.year + (1 if int(mo) < now.month - 6 else -1 if int(mo) > now.month + 6 else 0)
+        d = date(y, int(mo), int(dd))
+    return datetime(d.year, d.month, d.day, h, int(mm), tzinfo=now.tzinfo)
+
+
+def snapshot_board(cfg: Config, now: datetime | None = None, session=None) -> int:
+    """Read Eppley's arrivals board and keep each flight (latest status) under its flight
+    day (3:30 AM to 3:29 AM). Several readings a day build the whole day's list."""
+    import json
+    now = now or engine.now_local(cfg)
+    rows = read_board(session)["arrivals"]
+    folder = cfg.data_dir / "board"
+    folder.mkdir(parents=True, exist_ok=True)
+    days: dict = {}
+    shift = timedelta(hours=cfg.day_start.hour, minutes=cfg.day_start.minute)
+    for r in rows:
+        t = _board_time(r["time"], now)
+        if not t:
+            continue
+        fday = (t - shift).date().isoformat()
+        days.setdefault(fday, {})[f"{r['airline']} {r['flight']} {t:%H:%M}"] = dict(r, at=t.isoformat(), seen=now.isoformat(timespec="minutes"))
+    for fday, flights in days.items():
+        path = folder / f"{fday}.json"
+        old = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        old.update(flights)
+        path.write_text(json.dumps(old, indent=1), encoding="utf-8")
+    for p in sorted(folder.glob("*.json"))[:-10]:
+        p.unlink(missing_ok=True)
+    return len(rows)
+
+
+def compare_with_board(cfg: Config, flight_day: date) -> str:
+    """'Airport board: 74 arrivals (2 cancelled), SkyBird found 70; missing AA 4042, ...'
+    using the saved board readings and the day's master flight list."""
+    import json
+    import re
+    bpath = cfg.data_dir / "board" / f"{flight_day.isoformat()}.json"
+    fpath = cfg.data_dir / "flights" / f"{flight_day.isoformat()}.json"
+    if not bpath.exists() or not fpath.exists():
+        return ""
+    board = list(json.loads(bpath.read_text(encoding="utf-8")).values())
+    flights = json.loads(fpath.read_text(encoding="utf-8"))["flights"]
+    ours = {(f.get("callsign") or "").strip().upper() for f in flights if f.get("estArrivalAirport") == "KOMA"}
+    ours_nums = {}
+    for cs in ours:
+        m = re.match(r"([A-Z]{3})(\d+)", cs)
+        if m:
+            ours_nums.setdefault(m.group(2).lstrip("0"), set()).add(m.group(1))
+    live = [b for b in board if "cancel" not in b.get("status", "").lower()]
+    cancelled = len(board) - len(live)
+    found, missing = 0, []
+    for b in live:
+        num = re.sub(r"\D", "", b["flight"]).lstrip("0")
+        ops = OPERATORS.get(b["airline"].lower().strip(), [])
+        if num and ours_nums.get(num, set()) & set(ops or ours_nums.get(num, set())):
+            found += 1
+        else:
+            missing.append(f"{IATA.get(b['airline'].lower().strip(), b['airline'])} {b['flight']}")
+    times = sorted(b["at"] for b in board)
+    since = datetime.fromisoformat(times[0]).strftime("%I:%M %p").lstrip("0") if times else ""
+    out = (f"Airport board: {len(live)} arrivals" + (f" ({cancelled} cancelled)" if cancelled else "") +
+           (f" from {since}" if since else "") + f"; SkyBird found {found} of them")
+    if missing:
+        out += f"; missing {len(missing)}: " + ", ".join(missing[:12]) + ("…" if len(missing) > 12 else "")
+    return out
+
+
 def probe_board(session=None) -> list[str]:
     """Report what Eppley's board lists right now (how many rows, which times)."""
     out = []
     try:
         b = read_board(session)
-        for kind, rows in b.items():
-            times = [r["time"] for r in rows]
-            out.append(f"{kind}: {len(rows)} rows, first {times[0] if times else '-'}, last {times[-1] if times else '-'}; "
-                       f"statuses: {', '.join(sorted({r['status'].split(' ')[0] for r in rows}))[:200]}; "
-                       f"sample: {'; '.join(r['airline'] + ' ' + r['flight'] + ' ' + r['city'] + ' ' + r['time'] for r in rows[:3])}")
-        import re
-        import requests
-        from .publishers.buffer import UA
-        page = (session or requests).get(BOARD, headers={"User-Agent": UA}, timeout=30).text
-        heads = [" / ".join(re.sub(r"<[^>]+>", "", h).strip() for h in re.findall(r"(?is)<th[^>]*>(.*?)</th>", t))
-                 + f" ({len(re.findall(r'(?is)<tr', t))} rows)" for t in re.findall(r"(?is)<table.*?</table>", page)]
-        out.append("tables: " + " || ".join(heads)[:900])
-        ctx = [re.sub(r"\s+", " ", page[max(0, m.start() - 160): m.start() + 160]) for m in re.finditer(r"(?i)departure", page)]
-        ctx = [c for c in ctx if "og:" not in c and "<title" not in c and "breadcrumb" not in c.lower()]
-        for c in ctx[:6]:
-            out.append("departure mention: " + c[:330])
+        rows = b["arrivals"]
+        times = [r["time"] for r in rows]
+        out.append(f"arrivals board: {len(rows)} rows, first {times[0] if times else '-'}, last {times[-1] if times else '-'}")
     except Exception as e:
         out.append(f"couldn't read the board: {type(e).__name__}: {str(e)[:200]}")
     for ln in out:

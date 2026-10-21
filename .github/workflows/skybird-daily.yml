@@ -119,6 +119,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: skybird-videos-${{ github.run_number }}
-          path: cloud/videos/*.mp4
+          path: |
+            cloud/videos/*.mp4
+            cloud/videos/*flights.json
+            cloud/videos/*stats.json
           retention-days: 3
           if-no-files-found: ignore

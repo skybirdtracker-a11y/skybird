@@ -796,6 +796,27 @@ def _count_text(val, prog):
     return str(val)
 
 
+def _save_flight_list(cfg: Config, post_date: date, flight_day: date, raw: list[dict]) -> None:
+    """The day's master flight list (stats only: no tails or owners are shown anywhere),
+    kept next to the videos so the numbers can be checked against the airport's board."""
+    keep = ("callsign", "estDepartureAirport", "estArrivalAirport", "firstSeen", "lastSeen", "inferred")
+    airlines, mil, excl = fl._lists(cfg)
+    rows = []
+    for f in sorted(raw, key=lambda f: f.get("lastSeen") or f.get("firstSeen") or 0):
+        r = {k: f.get(k) for k in keep if f.get(k) is not None}
+        kind = fl.classify(f, airlines, mil, excl)
+        r["type"] = {"commercial": "airline"}.get(kind, kind)
+        if kind != "commercial":
+            r.pop("callsign", None)   # private/military callsigns can be tail numbers: never kept
+        for k in ("firstSeen", "lastSeen"):
+            if r.get(k):
+                r[k] = datetime.fromtimestamp(r[k], cfg.tz).strftime("%m-%d %I:%M %p")
+        rows.append(r)
+    out = {"flight_day": flight_day.isoformat(), "flights": len(rows),
+           "inferred_arrivals": sum(1 for f in raw if f.get("inferred")), "list": rows}
+    cfg.media_file(post_date, "flights.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+
+
 def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[str] | None = None) -> Path:
     """Fetch the flight day shown on `post_date` and write the reels + stats.json."""
     import requests
@@ -807,8 +828,12 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     if demo:
         raw, info = fl.demo_raw(flight_day, cfg), {}
     else:
+        # 1. All planes: every flight at the metro fields, plus the landings OpenSky missed.
+        #    This one list is the master record; the other posts are cut from it.
         raw = fl.fetch_opensky(cfg, flight_day, session)
+        raw += fl.infer_arrivals(cfg, raw, flight_day, session)
         info = fl.aircraft_info(cfg, {f.get("icao24") for f in raw if f.get("icao24")}, session)
+    _save_flight_list(cfg, post_date, flight_day, raw)
     day = fl.build_day(cfg, raw, info)
     week = fl.military_week(cfg, flight_day, day["posts"]["military"]["stats"]["flights"],
                             session=None if demo else session, backfill=not demo)
@@ -826,8 +851,12 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     if not day["complete"]:
         log(cfg, "Heads up: " + day["why"])
+    stats["inferred_arrivals"] = sum(1 for f in raw if f.get("inferred"))
+    cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     fonts = Fonts()
-    for slot in slots or list(FILES):
+    # Made in this order: All planes first (the full picture), then Eppley, private, military.
+    order = ["all", "commercial", "private", "military"]
+    for slot in [k for k in order if k in (slots or list(FILES))]:
         Reel(cfg, slot, flight_day, day["posts"][slot], fonts, demo, week=week).render(cfg.media_file(post_date, FILES[slot]))
         log(cfg, f"  rendered {cfg.media_file(post_date, FILES[slot]).name} ({day['posts'][slot]['stats']['flights']} movements)")
     return folder

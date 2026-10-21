@@ -26,6 +26,7 @@ from datetime import date, datetime, timedelta
 import requests
 
 from .config import Config
+from .state import log
 
 TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
 API = "https://opensky-network.org/api"
@@ -226,6 +227,53 @@ def family(model: str | None, manufacturer: str | None) -> str | None:
     return (model or "").strip() or None
 
 
+MAX_ARRIVAL_LOOKUPS = 120   # OpenSky requests spent filling in missing arrivals each day
+
+
+def infer_arrivals(cfg: Config, raw: list[dict], day: date, session=None) -> list[dict]:
+    """Fill in landings OpenSky missed. Most planes that take off from an Omaha field
+    landed there earlier the same day, so each departing plane's previous flight is
+    looked up and counted as an arrival at that field (marked "inferred").
+    Returns only the added flights. One request per plane, at most MAX_ARRIVAL_LOOKUPS."""
+    start, stop = cfg.flight_day(day)
+    begin, end = int(start.timestamp()), int(stop.timestamp()) - 1
+    known = {(f.get("icao24"), f.get("firstSeen")) for f in raw}   # flights already in the list
+    deps = sorted((f for f in raw if f.get("estDepartureAirport") in METRO and f.get("icao24")
+                   and f.get("estDepartureAirport") != f.get("estArrivalAirport")), key=lambda f: f.get("firstSeen") or 0)
+    airlines, mil, excl = _lists(cfg)
+    rank = {"commercial": 0, "private": 1, "military": 2}   # airlines first if the cap is reached
+    planes = []
+    for f in sorted(deps, key=lambda f: rank.get(classify(f, airlines, mil, excl), 3)):
+        if f["icao24"] not in planes:
+            planes.append(f["icao24"])
+    added, asked = [], 0
+    for icao24 in planes[:MAX_ARRIVAL_LOOKUPS]:
+        try:
+            hist = _get(cfg, session, "/flights/aircraft", {"icao24": icao24, "begin": begin - 12 * 3600, "end": end})
+        except DataError as e:
+            log(cfg, f"Stopped filling in arrivals after {asked} planes: {e}")
+            break
+        asked += 1
+        hist = sorted(hist, key=lambda h: h.get("lastSeen") or 0)
+        for d in (x for x in deps if x["icao24"] == icao24):
+            t = d.get("firstSeen") or 0
+            prev = [h for h in hist if (h.get("lastSeen") or 0) <= t + 300 and (h.get("lastSeen") or 0) >= t - 18 * 3600
+                    and h.get("firstSeen") != d.get("firstSeen")]
+            if not prev:
+                continue
+            p = prev[-1]
+            field = d["estDepartureAirport"]
+            if (icao24, p.get("firstSeen")) in known or not (begin <= (p.get("lastSeen") or 0) <= end):
+                continue   # already counted, or it landed outside this flight day
+            if p.get("estArrivalAirport") in METRO or p.get("estDepartureAirport") == field:
+                continue   # OpenSky did catch this landing, or it's a local loop
+            added.append(dict(p, estArrivalAirport=field, callsign=p.get("callsign") or d.get("callsign"), inferred=True))
+            known.add((icao24, p.get("firstSeen")))
+    if asked:
+        log(cfg, f"Filled in {len(added)} arrivals OpenSky missed (looked up {asked} planes)")
+    return added
+
+
 def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:
     """{icao24: {"cls": "jet"|"prop"|"heli"|None, "family": str|None}}. Owner/registration are never kept."""
     path = cfg.data_dir / "aircraft_cache.json"
@@ -322,7 +370,8 @@ def build_day(cfg: Config, raw: list[dict], info: dict | None = None) -> dict:
     day["why"] = "" if day["complete"] else (
         f"Eppley shows {c['departures']} airline departures and {c['arrivals']} arrivals, the last departure at "
         f"{datetime.fromtimestamp(last, cfg.tz).strftime('%I:%M %p').lstrip('0') if last else 'n/a'}. "
-        "A full day has about 95-140 of each, running past 10 PM, so OpenSky's data looks unfinished.")
+        "Eppley has about 70-75 airline departures a day and about as many arrivals (Omaha Airport "
+        "Authority), running past 9 PM, so OpenSky's data looks unfinished.")
     return day
 
 

@@ -401,6 +401,13 @@ def probe_board(session=None) -> list[str]:
             out.append(f"{kind}: {len(rows)} rows, first {times[0] if times else '-'}, last {times[-1] if times else '-'}; "
                        f"statuses: {', '.join(sorted({r['status'].split(' ')[0] for r in rows}))[:200]}; "
                        f"sample: {'; '.join(r['airline'] + ' ' + r['flight'] + ' ' + r['city'] + ' ' + r['time'] for r in rows[:3])}")
+        import re
+        import requests
+        from .publishers.buffer import UA
+        page = (session or requests).get(BOARD, headers={"User-Agent": UA}, timeout=30).text
+        heads = [" / ".join(re.sub(r"<[^>]+>", "", h).strip() for h in re.findall(r"(?is)<th[^>]*>(.*?)</th>", t))
+                 + f" ({len(re.findall(r'(?is)<tr', t))} rows)" for t in re.findall(r"(?is)<table.*?</table>", page)]
+        out.append("tables: " + " || ".join(heads)[:900])
     except Exception as e:
         out.append(f"couldn't read the board: {type(e).__name__}: {str(e)[:200]}")
     for ln in out:

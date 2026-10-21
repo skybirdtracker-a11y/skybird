@@ -369,7 +369,8 @@ BOARD = "https://www.flyoma.com/flight-information/arrivals-departures/"
 
 def probe_board(session=None) -> list[str]:
     """Look at Eppley's arrivals/departures page and report where its flight list comes
-    from (script and data links), so SkyBird can compare its counts with the airport's."""
+    from, so SkyBird can compare its counts with the airport's. (GitHub shows at most
+    10 notes per step, so findings are packed into a few lines.)"""
     import re
     import requests
     from .publishers.buffer import UA
@@ -378,19 +379,28 @@ def probe_board(session=None) -> list[str]:
     try:
         r = s.get(BOARD, headers={"User-Agent": UA}, timeout=30)
         html = r.text
-        out.append(f"page: HTTP {r.status_code}, {len(html)} characters, type {r.headers.get('Content-Type', '')}")
-        links = set(re.findall(r"""(?:src|href|data-[\w-]+)=["']([^"']+)["']""", html))
-        links |= set(re.findall(r"""https?://[^"'\s<>]+""", html))
-        keep = sorted(u for u in links
-                      if re.search(r"(?i)flight|fids|arriv|depart|api|json|ajax|wp-json|\.js", u))
-        out += [f"link: {u[:200]}" for u in keep[:40]]
-        for m in re.findall(r"""(?i)(admin-ajax\.php[^"'\s]*|wp-json/[^"'\s]+|action["']?\s*[:=]\s*["'][\w-]+)""", html)[:15]:
-            out.append(f"hint: {m[:200]}")
-        out.append("text sample: " + re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))[:600])
+        frames = re.findall(r"""<iframe[^>]+src=["']([^"']+)""", html, re.I)
+        scripts = re.findall(r"""<script[^>]+src=["']([^"']+)""", html, re.I)
+        third = sorted({u.split("/")[2] for u in scripts + frames if u.startswith("http") and "flyoma.com" not in u})
+        words = sorted({w.lower() for w in re.findall(r"(?i)flightview|flightaware|fids|aviationstack|flightstats|"
+                                                       r"oag|cirium|proflight|airportwebsites|flight[_-]?board|"
+                                                       r"flight[_-]?status|arrivals?[_-]?table|getflights|flight_data", html)})
+        flights = re.findall(r"\b(?:WN|UA|AA|DL|AS|G4|F9|SY|MX|NK)\s?\d{2,4}\b", re.sub(r"<[^>]+>", " ", html))
+        ajax = sorted(set(re.findall(r"""action["']?\s*[:=]\s*["']([\w-]+)["']""", html)))[:12]
+        out.append(f"page HTTP {r.status_code}, {len(html)} chars; flight numbers in the HTML itself: {len(flights)} "
+                   f"(e.g. {', '.join(flights[:6])})")
+        out.append("iframes: " + (", ".join(f[:150] for f in frames[:5]) or "none"))
+        out.append("outside script hosts: " + (", ".join(third[:15]) or "none"))
+        out.append("flight-board words: " + (", ".join(words) or "none") + " | ajax actions: " + (", ".join(ajax) or "none"))
+        i = max(html.lower().find("arrival"), 0)
+        out.append("near 'arrival': " + re.sub(r"\s+", " ", html[i:i + 700])[:700])
+        j = html.lower().find("<table")
+        if j >= 0:
+            out.append("first table: " + re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " | ", html[j:j + 2500]))[:850])
     except Exception as e:
         out.append(f"couldn't load the page: {type(e).__name__}: {str(e)[:200]}")
     for ln in out:
         print(ln)
         if os.environ.get("GITHUB_ACTIONS"):
-            print(f"::notice title=Airport board::{ln[:900]}")
+            print(f"::notice title=Airport board::{ln[:950]}")
     return out

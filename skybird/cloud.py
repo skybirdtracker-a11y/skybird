@@ -408,6 +408,10 @@ def probe_board(session=None) -> list[str]:
         heads = [" / ".join(re.sub(r"<[^>]+>", "", h).strip() for h in re.findall(r"(?is)<th[^>]*>(.*?)</th>", t))
                  + f" ({len(re.findall(r'(?is)<tr', t))} rows)" for t in re.findall(r"(?is)<table.*?</table>", page)]
         out.append("tables: " + " || ".join(heads)[:900])
+        ctx = [re.sub(r"\s+", " ", page[max(0, m.start() - 160): m.start() + 160]) for m in re.finditer(r"(?i)departure", page)]
+        ctx = [c for c in ctx if "og:" not in c and "<title" not in c and "breadcrumb" not in c.lower()]
+        for c in ctx[:6]:
+            out.append("departure mention: " + c[:330])
     except Exception as e:
         out.append(f"couldn't read the board: {type(e).__name__}: {str(e)[:200]}")
     for ln in out:

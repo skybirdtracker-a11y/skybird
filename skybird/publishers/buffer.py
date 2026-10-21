@@ -189,6 +189,9 @@ def host_video(video: Path, session=requests, skip: tuple[str, ...] = (), min_ho
             errors.append(f"{name}: {why}")
             continue
         return link, name
+    if not errors:
+        raise PublishError(f"No free file host keeps videos {min_hours:.0f}+ hours (until the post time), so Buffer "
+                           "would lose the video. Make the GitHub repository public so SkyBird can keep them there.")
     raise PublishError("Couldn't upload the video to any temporary host (" + "; ".join(errors) + ")")
 
 
@@ -231,6 +234,36 @@ def post_metrics(api_key: str, post_id: str, session=requests) -> dict:
             out.pop("views", None)
         return out
     raise last or PublishError("Buffer didn't return numbers")
+
+
+# Buffer's API is in beta, so a few query shapes are tried; an unknown field is just an error.
+STATUS_QUERIES = ("query { post(input: {id: %s}) { id status sentAt } }",
+                  "query { post(input: {id: %s}) { id status } }",
+                  "query { post(id: %s) { id status } }")
+
+
+def post_status(api_key: str, post_id: str, session=requests) -> str:
+    """'sent', 'failed', 'waiting' (still queued) or 'unknown' for a post Buffer has."""
+    import json
+    last = None
+    for q in STATUS_QUERIES:
+        try:
+            data = gql(api_key, q % json.dumps(post_id), session=session)
+        except PublishError as e:
+            last = e
+            if "rejected the API key" in str(e) or "rate limit" in str(e):
+                raise
+            continue
+        p = data.get("post")
+        if p is None:
+            return "unknown"
+        st = str(p.get("status") or "").lower()
+        if p.get("sentAt") or st in ("sent", "published", "posted"):
+            return "sent"
+        if any(w in st for w in ("error", "fail", "rejected")):
+            return "failed"
+        return "waiting" if st in ("buffer", "scheduled", "queued", "pending", "sending", "draft", "") else "unknown"
+    raise last or PublishError("Buffer didn't say")
 
 
 # ---- posting ----------------------------------------------------------------------
@@ -276,18 +309,23 @@ def _create(api_key: str, channel_id: str, caption: str, video_url: str, platfor
 
 
 def post(video: Path, captions: dict[str, str], secrets: dict,
-         session: requests.Session | None = None, due: datetime | None = None) -> dict[str, PublishResult]:
-    """Post now, or with `due` schedule it in Buffer's queue for that time."""
+         session: requests.Session | None = None, due: datetime | None = None,
+         video_url: str | None = None) -> dict[str, PublishResult]:
+    """Post now, or with `due` schedule it in Buffer's queue for that time.
+    `video_url`: a permanent link to the video (GitHub); otherwise a free file host is used."""
     key = secrets.get("buffer_api_key")
     if not key:
         raise PublishError("Buffer isn't connected (run: python -m skybird buffer-setup)")
     if not video.exists():
         raise PublishError(f"Video not found: {video}")
     s = session or requests.Session()
-    # Buffer copies the video the moment the post is created (a bad link fails right
-    # away), so even for a scheduled post the link only has to last a little while.
-    life = 0.5 if due else 0
-    url, host = host_video(video, s, min_hours=life)
+    # Buffer does NOT keep its own copy of a scheduled video: it fetches the link again
+    # when it publishes. So the link must outlive the wait until the post time.
+    life = max(0.0, (due - datetime.now(timezone.utc)).total_seconds() / 3600) + 1 if due else 0
+    if video_url:
+        url, host = video_url, "GitHub"
+    else:
+        url, host = host_video(video, s, min_hours=life)
     used = [host]
     out = {}
     for platform, caption in captions.items():

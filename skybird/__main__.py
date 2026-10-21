@@ -60,6 +60,7 @@ def main(argv=None):
     p.add_argument("--at", default="", help="post time HH:MM for --only posts (default: their usual time)")
     p.add_argument("--check-hosts", action="store_true", help="only test which video hosts accept uploads")
     p.add_argument("--test-notify", action="store_true", help="only send a test phone notification")
+    p.add_argument("--check-posts", action="store_true", help="only ask Buffer whether today's posts went out")
     a = ap.parse_args(argv)
     if a.cmd == "cloud-run" and a.dry_run:
         import os
@@ -78,6 +79,10 @@ def main(argv=None):
         serve(cfg, with_scheduler=not a.no_scheduler)
     elif a.cmd == "cloud-run":
         from .cloud import run
+        if a.check_posts:
+            from .cloud import check_posts
+            check_posts(cfg)
+            return
         if a.test_notify:
             from .cloud import test_notify
             test_notify(cfg)

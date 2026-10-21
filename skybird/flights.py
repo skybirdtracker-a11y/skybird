@@ -227,6 +227,29 @@ def family(model: str | None, manufacturer: str | None) -> str | None:
     return (model or "").strip() or None
 
 
+SMALL_FIELDS = ("KCBF", "KMLE")   # Council Bluffs + Millard: no airline jets land there
+
+
+def fix_airline_fields(cfg: Config, raw: list[dict]) -> int:
+    """Airline jets that OpenSky places at Council Bluffs or Millard really used Eppley.
+    (Council Bluffs is 12 km from Eppley, under the approach path: when receivers lose a
+    jet low on final, OpenSky picks the nearest airport.) Offutt is left alone: military
+    charter airliners really do use it. Returns how many flights were moved."""
+    airlines, mil, excl = _lists(cfg)
+    n = 0
+    for f in raw:
+        if classify(f, airlines, mil, excl) != "commercial":
+            continue
+        for k in ("estArrivalAirport", "estDepartureAirport"):
+            if f.get(k) in SMALL_FIELDS:
+                f[k] = HUB
+                f["moved_to_eppley"] = True
+                n += 1
+    if n:
+        log(cfg, f"Moved {n} airline flight ends from Council Bluffs/Millard to Eppley")
+    return n
+
+
 MAX_ARRIVAL_LOOKUPS = 120   # OpenSky requests spent filling in missing arrivals each day
 
 

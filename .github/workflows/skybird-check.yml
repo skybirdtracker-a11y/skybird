@@ -1,0 +1,52 @@
+# SkyBird post check: about 30 minutes after each post time, asks Buffer whether the
+# post really went out and sends a phone alert if one failed. Posts nothing itself and
+# doesn't use OpenSky.
+name: SkyBird post check
+
+on:
+  schedule:
+    # 30 minutes after 9 AM / 11 AM / 1 PM / 6 PM Central. GitHub runs on UTC, so both
+    # summer and winter times are listed; a check with nothing due just does nothing.
+    - cron: "30 14-19 * * *"
+    - cron: "30 23 * * *"
+    - cron: "30 0 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: skybird
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Restore SkyBird's memory (today's scheduled posts)
+        uses: actions/cache/restore@v6
+        with:
+          path: cloud/data
+          key: skybird-data-${{ github.run_id }}
+          restore-keys: skybird-data-
+
+      - name: Ask Buffer whether the posts went out
+        env:
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python -m skybird --config cloud/config.toml cloud-run --check-posts
+
+      - name: Save SkyBird's memory
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: cloud/data
+          key: skybird-data-${{ github.run_id }}

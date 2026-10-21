@@ -95,6 +95,11 @@ def _eppley_counts(cfg: Config, day) -> str:
         return ""
 
 
+def _in_buffer(post: dict) -> bool:
+    """This post was really scheduled in Buffer (not a dry run) on at least one platform."""
+    return any(r.get("ok") and r.get("id") not in (None, "", "dry-run") for r in (post.get("results") or {}).values())
+
+
 def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
         only: list[str] | None = None, day=None, at: str | None = None) -> dict:
     """`only` = remake + schedule just these posts (e.g. ["all"]); `day` = the post date
@@ -120,12 +125,17 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     if not cfg.dry_run:
         found = connect_buffer(cfg)
         log(cfg, "Buffer channels: " + ", ".join(f"{p}={'yes' if p in found else 'missing'}" for p in PLATFORMS))
+    # Posts already sitting in Buffer from an earlier run today (e.g. one that crashed
+    # half way) are kept as they are and not scheduled again.
+    in_buffer = set() if force or only else {k for k, p in ((before or {}).get("posts") or {}).items()
+                                             if _in_buffer(p)}
+    keep = {k for k in (before or {}).get("posts", {}) if (only and k not in only) or k in in_buffer}
     st = engine.prepare(cfg, today, force=True, quiet=True)
-    if only and before:   # keep the other posts' records as they were (already scheduled)
+    if keep:   # put those posts' records back as they were
         with locked(cfg):
             st = load_state(cfg, today)
             for k, p in before.get("posts", {}).items():
-                if k not in only:
+                if k in keep:
                     st["posts"][k] = p
             if before.get("cloud_done"):
                 st["cloud_done"] = before["cloud_done"]
@@ -141,11 +151,28 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
 
     times = plan(cfg, today, now, only, at)
     scheduled, problems = [], []
+    if in_buffer:
+        log(cfg, f"{today}: already in Buffer from an earlier run, not scheduled again: {', '.join(sorted(in_buffer))}")
+    # Store the videos on GitHub so Buffer's links never expire (see publishers/github_host.py)
+    links, storage_note = {}, ""
+    todo = [Path(st["posts"][sl.key]["video"]) for sl in cfg.slots if sl.key in times and sl.key not in in_buffer
+            and (not only or sl.key in only) and st["posts"].get(sl.key, {}).get("video_exists")]
+    if todo and not cfg.dry_run:
+        from .publishers import github_host
+        try:
+            links = github_host.upload(todo, today)
+            removed = github_host.cleanup(now.date())
+            log(cfg, f"Videos stored on GitHub ({len(links)})" + (f"; removed {removed} old day(s)" if removed else ""))
+        except Exception as e:   # NotAvailable, or GitHub hiccup: fall back to the free hosts
+            storage_note = str(e)
+            log(cfg, f"Couldn't store the videos on GitHub: {e}")
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(f"::warning title=Video storage::{storage_note[:900]}")
     for slot in sorted(cfg.slots, key=lambda s: s.time):
         post = st["posts"].get(slot.key)
         if only and slot.key not in only:
             continue
-        if not post or not post["video_exists"] or slot.key not in times:
+        if not post or not post["video_exists"] or slot.key not in times or slot.key in in_buffer:
             continue
         due = times[slot.key]
         caps = {p: engine.caption_for(post, p) for p, on in post["platforms"].items() if on}
@@ -163,7 +190,8 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
             got = {}
             for attempt in (1, 2):   # the free file hosts have bad minutes; wait and try once more
                 try:
-                    got = buffer.post(Path(post["video"]), caps, cfg.secrets, due=due)
+                    got = buffer.post(Path(post["video"]), caps, cfg.secrets, due=due,
+                                      video_url=links.get(Path(post["video"]).name))
                 except Exception as e:
                     got = {p: e for p in caps}
                 hosting = all("temporary host" in str(getattr(r, "detail", "") or r) for r in got.values()
@@ -210,14 +238,18 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
             print(f"::notice title=Eppley flights::{eppley}")
     if st.get("incomplete"):
         body += "\n\n⚠️ " + st["incomplete"] + " Check the videos in Buffer; delete them if they look wrong."
+    if storage_note:
+        body += "\n\n⚠️ The videos couldn't be stored on GitHub, so Buffer may lose them before posting: " + storage_note[:300]
     if problems:
         body += "\n\nProblems:\n" + "\n".join(p[:300] for p in problems[:6])
     body += "\n\nReview them in the Buffer app (Queue): edit or delete anything you don't want before it posts."
-    title = "SkyBird (cloud): " + (f"{len(scheduled)} posts scheduled" if scheduled else "nothing scheduled")
+    n = len(scheduled)
+    title = "SkyBird (cloud): " + (f"{n} post{'s' if n != 1 else ''} scheduled" if scheduled else
+                                   "already scheduled earlier" if in_buffer else "nothing scheduled")
     notify.send(cfg, title + (" [dry run]" if cfg.dry_run else ""), body,
                 priority="high" if problems or not scheduled else "default", click=BUFFER_APP)
     print(title + "\n" + body)
-    if not scheduled:
+    if not scheduled and not in_buffer:
         raise SystemExit(title)
     return {"scheduled": scheduled, "problems": problems}
 
@@ -262,3 +294,64 @@ def test_notify(cfg: Config) -> bool:
     if os.environ.get("GITHUB_ACTIONS"):
         print(f"::notice title=Notification test::{line}")
     return ok
+
+
+def check_posts(cfg: Config, now: datetime | None = None) -> list[str]:
+    """~30 minutes after each post time: ask Buffer whether the posts really went out,
+    and alert your phone if one failed or still hasn't gone out an hour after its time."""
+    from datetime import timedelta as _td
+    from .publishers import buffer
+    now = now or engine.now_local(cfg)
+    if os.environ.get("BUFFER_API_KEY", "").strip():
+        cfg.secrets["buffer_api_key"] = os.environ["BUFFER_API_KEY"].strip()
+    if os.environ.get("NTFY_TOPIC", "").strip():
+        cfg.raw.setdefault("notify", {})["ntfy_topic"] = os.environ["NTFY_TOPIC"].strip()
+    key = cfg.secrets.get("buffer_api_key")
+    lines, alerts = [], []
+    for day in (now.date() - _td(days=1), now.date()):
+        st = load_state(cfg, day)
+        if not st or not key:
+            continue
+        changed = False
+        for k, post in st["posts"].items():
+            due = engine._ts(post.get("posted_at"))
+            if not due or now < due + _td(minutes=15) or post.get("checked"):
+                continue
+            for plat, r in (post.get("results") or {}).items():
+                if not r.get("ok") or r.get("id") in (None, "", "dry-run") or r.get("checked"):
+                    continue
+                try:
+                    status = buffer.post_status(key, r["id"])
+                except Exception as e:
+                    status = f"unknown ({str(e)[:80]})"
+                late = now > due + _td(hours=1)
+                when = due.strftime("%I:%M %p").lstrip("0")
+                if status == "sent":
+                    r["checked"] = "sent"
+                elif status == "failed" or (late and status == "waiting"):
+                    r["checked"] = status
+                    alerts.append(f"{post['title']} ({when}) on {plat}: " +
+                                  ("Buffer says it FAILED" if status == "failed" else "still not posted an hour later"))
+                elif late:
+                    r["checked"] = "unknown"   # couldn't tell; don't keep asking
+                lines.append(f"{day} {post['title']} {when} {plat}: {status}")
+                changed = True
+            if all(r.get("checked") or not r.get("ok") for r in (post.get("results") or {}).values()):
+                post["checked"] = True
+        if changed:
+            with locked(cfg):
+                fresh = load_state(cfg, day)
+                for k in fresh["posts"]:
+                    fresh["posts"][k]["results"] = st["posts"][k].get("results", {})
+                    if st["posts"][k].get("checked"):
+                        fresh["posts"][k]["checked"] = True
+                save_state(cfg, day, fresh)
+    for ln in lines:
+        print(ln)
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::notice title=Post check::{ln}")
+    if alerts:
+        notify.send(cfg, "SkyBird (cloud): a post didn't go out", "\n".join(alerts) +
+                    "\n\nOpen Buffer to see why (often a missing video); you can re-post it from there.",
+                    priority="high", click=BUFFER_APP)
+    return lines

@@ -67,6 +67,9 @@ A red ✕? Click it, then the failed step; the last lines say what's wrong (usua
 
 ## Good to know
 
+- **The repository must be public.** Buffer doesn't keep its own copy of a scheduled video; it fetches the link again at post time. SkyBird stores each day's videos on this repository (Releases → `videos-YYYY-MM-DD`, removed after 14 days) so the link never expires, and GitHub only lets Buffer fetch them from a public repository. Your keys stay private (secrets are never shown). Settings → General → Danger Zone → Change visibility → Public.
+- **Post check:** about 30 minutes after each post time a small job ("SkyBird post check") asks Buffer whether it went out, and your phone gets an alert if not.
+
 - GitHub's clock can run 5–30 minutes late at busy times. Posts are scheduled in Buffer, so they still go out on time; if the job itself runs after a post's time, that post goes out about 10 minutes later instead, with the rest an hour apart (same catch-up rule as the PC).
 - In the cloud, every post uses the day's default caption style (it rotates, so the caption tests keep running) and the pre-checked @tags. There's no approval step: Buffer's queue is your approval.
 - Engagement charts, best-time testing and phone approvals live in the PC dashboard, which keeps working whenever the PC is on (with Auto-posting off it just shows things).

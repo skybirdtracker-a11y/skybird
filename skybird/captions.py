@@ -152,20 +152,20 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
         if top_city:
             question += f" {top_city} led {day} with {top.get('count')} flights."
     elif slot_key == "private":
-        friendly = f"Morning, Omaha. {n} private jet movements across the metro fields on {day}."
+        friendly = f"Morning, Omaha. {n} private jet takeoffs and landings across the metro fields on {day}."
         if top_city:
             friendly += f" Most popular city: {top_city}."
         if ftype.get("name"):
             friendly += f" Most common type: {ftype['name']}."
-        deadpan = f"{n} private jets on {day}. None of them offered us a ride."
+        deadpan = f"{n} private jet takeoffs and landings on {day}. None of them offered us a ride."
         question = "If you had a private jet for a day, where would you take it from Omaha?"
         if top_city:
             question += f" {day}'s favorite: {top_city}."
     else:
         friendly = f"Morning, Omaha. {n} flights across Eppley, Millard, Council Bluffs and Offutt on {day}."
         if field.get("code"):
-            friendly += f" Busiest field: {field['code']} with {_n(field.get('count'))}."
-        deadpan = f"{n} flights over the metro on {day}. We counted every one. Twice."
+            friendly += f" Busiest field: {field.get('name') or field['code']} with {_n(field.get('count'))}."
+        deadpan = f"{n} takeoffs and landings across the metro on {day}. We counted every one. Twice."
         question = f"Which field is closest to you: Eppley, Millard, Council Bluffs or Offutt? {n} flights across the metro on {day}."
     if ev_hook:
         friendly += f" {ev_hook}"
@@ -180,7 +180,7 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
               f"Did you know? Eppley handled {n} airline flights yesterday, about one every few minutes. ✈️"
         guess = "Guess before you watch: what was Eppley's top destination yesterday? 👇 Answer at the end of the video."
     elif slot_key == "private":
-        dyk = f"Did you know? {n} private jets moved through the Omaha metro yesterday."
+        dyk = f"Did you know? Private jets made {n} takeoffs and landings around the Omaha metro yesterday."
         if ftype.get("name"):
             dyk += f" The most common type was the {ftype['name']}."
         guess = "Guess: how many private jets flew into Omaha yesterday? Closest guess in the comments gets bragging rights."
@@ -189,13 +189,13 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
                "the ones broadcasting their position.")
         guess = ""  # military stays counts-only and low-key: no guessing games
     else:
-        dyk = f"Did you know? {n} aircraft flew over the Omaha metro yesterday."
+        dyk = f"Did you know? There were {n} takeoffs and landings across the Omaha metro's four airfields yesterday."
         if field.get("code"):
-            dyk += f" Busiest field: {field['code']}."
+            dyk += f" Busiest field: {field.get('name') or field['code']}."
         guess = "Which Omaha-area airport do you think was busiest yesterday? Drop your guess 👇"
     local = ""
     if ev and slot_key != "military":
-        noun = {"commercial": "airline flights at Eppley", "private": "private jet movements"}.get(slot_key, "flights over the metro")
+        noun = {"commercial": "airline flights at Eppley", "private": "private jet takeoffs and landings"}.get(slot_key, "takeoffs and landings across the metro")
         if "thanksgiving" in ev.get("name", "").lower():
             local = f"Thanksgiving travel check: Eppley moved {n} flights yesterday. Where are you headed? 🦃"
         elif ev_hook:

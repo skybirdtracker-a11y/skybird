@@ -799,7 +799,7 @@ def _count_text(val, prog):
 def _save_flight_list(cfg: Config, post_date: date, flight_day: date, raw: list[dict]) -> None:
     """The day's master flight list (stats only: no tails or owners are shown anywhere),
     kept next to the videos so the numbers can be checked against the airport's board."""
-    keep = ("callsign", "estDepartureAirport", "estArrivalAirport", "firstSeen", "lastSeen", "inferred")
+    keep = ("callsign", "estDepartureAirport", "estArrivalAirport", "firstSeen", "lastSeen", "inferred", "moved_to_eppley")
     airlines, mil, excl = fl._lists(cfg)
     rows = []
     for f in sorted(raw, key=lambda f: f.get("lastSeen") or f.get("firstSeen") or 0):
@@ -831,6 +831,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         # 1. All planes: every flight at the metro fields, plus the landings OpenSky missed.
         #    This one list is the master record; the other posts are cut from it.
         raw = fl.fetch_opensky(cfg, flight_day, session)
+        fl.fix_airline_fields(cfg, raw)
         raw += fl.infer_arrivals(cfg, raw, flight_day, session)
         info = fl.aircraft_info(cfg, {f.get("icao24") for f in raw if f.get("icao24")}, session)
     _save_flight_list(cfg, post_date, flight_day, raw)

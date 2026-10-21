@@ -49,6 +49,11 @@ on:
         type: string
         default: ""
 
+# Lets the run keep each day's videos on this repository (as release files) so
+# Buffer's links never expire. Needs the repository to be public.
+permissions:
+  contents: write
+
 concurrency:
   group: skybird
   cancel-in-progress: false
@@ -98,6 +103,7 @@ jobs:
           OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          GITHUB_TOKEN: ${{ github.token }}
           ONLY: ${{ inputs.only }}
           DAY: ${{ inputs.day }}
           POST_TIME: ${{ inputs.post_time }}

@@ -367,38 +367,42 @@ def check_posts(cfg: Config, now: datetime | None = None) -> list[str]:
 BOARD = "https://www.flyoma.com/flight-information/arrivals-departures/"
 
 
-def probe_board(session=None) -> list[str]:
-    """Look at Eppley's arrivals/departures page and report where its flight list comes
-    from, so SkyBird can compare its counts with the airport's. (GitHub shows at most
-    10 notes per step, so findings are packed into a few lines.)"""
+def read_board(session=None) -> dict:
+    """Eppley's own arrivals/departures board (the tables on flyoma.com):
+    {"arrivals": [...], "departures": [...]}, each row {airline, flight, city, status, time, gate}."""
+    import html as _html
     import re
     import requests
     from .publishers.buffer import UA
     s = session or requests.Session()
+    page = s.get(BOARD, headers={"User-Agent": UA}, timeout=30).text
+    out = {"arrivals": [], "departures": []}
+    for t in re.findall(r"(?is)<table.*?</table>", page):
+        head = " ".join(re.findall(r"(?is)<th[^>]*>(.*?)</th>", t)).lower()
+        kind = "arrivals" if "origin" in head else "departures" if "destination" in head else None
+        if not kind:
+            continue
+        for row in re.findall(r"(?is)<tr[^>]*>(.*?)</tr>", t):
+            cells = [_html.unescape(re.sub(r"<[^>]+>", " ", c)).strip() for c in re.findall(r"(?is)<td[^>]*>(.*?)</td>", row)]
+            cells = [re.sub(r"\s+", " ", c) for c in cells]
+            if len(cells) >= 5 and cells[1]:
+                out[kind].append({"airline": cells[0], "flight": cells[1], "city": cells[2], "status": cells[3],
+                                  "time": cells[4], "gate": cells[5] if len(cells) > 5 else ""})
+    return out
+
+
+def probe_board(session=None) -> list[str]:
+    """Report what Eppley's board lists right now (how many rows, which times)."""
     out = []
     try:
-        r = s.get(BOARD, headers={"User-Agent": UA}, timeout=30)
-        html = r.text
-        frames = re.findall(r"""<iframe[^>]+src=["']([^"']+)""", html, re.I)
-        scripts = re.findall(r"""<script[^>]+src=["']([^"']+)""", html, re.I)
-        third = sorted({u.split("/")[2] for u in scripts + frames if u.startswith("http") and "flyoma.com" not in u})
-        words = sorted({w.lower() for w in re.findall(r"(?i)flightview|flightaware|fids|aviationstack|flightstats|"
-                                                       r"oag|cirium|proflight|airportwebsites|flight[_-]?board|"
-                                                       r"flight[_-]?status|arrivals?[_-]?table|getflights|flight_data", html)})
-        flights = re.findall(r"\b(?:WN|UA|AA|DL|AS|G4|F9|SY|MX|NK)\s?\d{2,4}\b", re.sub(r"<[^>]+>", " ", html))
-        ajax = sorted(set(re.findall(r"""action["']?\s*[:=]\s*["']([\w-]+)["']""", html)))[:12]
-        out.append(f"page HTTP {r.status_code}, {len(html)} chars; flight numbers in the HTML itself: {len(flights)} "
-                   f"(e.g. {', '.join(flights[:6])})")
-        out.append("iframes: " + (", ".join(f[:150] for f in frames[:5]) or "none"))
-        out.append("outside script hosts: " + (", ".join(third[:15]) or "none"))
-        out.append("flight-board words: " + (", ".join(words) or "none") + " | ajax actions: " + (", ".join(ajax) or "none"))
-        i = max(html.lower().find("arrival"), 0)
-        out.append("near 'arrival': " + re.sub(r"\s+", " ", html[i:i + 700])[:700])
-        j = html.lower().find("<table")
-        if j >= 0:
-            out.append("first table: " + re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " | ", html[j:j + 2500]))[:850])
+        b = read_board(session)
+        for kind, rows in b.items():
+            times = [r["time"] for r in rows]
+            out.append(f"{kind}: {len(rows)} rows, first {times[0] if times else '-'}, last {times[-1] if times else '-'}; "
+                       f"statuses: {', '.join(sorted({r['status'].split(' ')[0] for r in rows}))[:200]}; "
+                       f"sample: {'; '.join(r['airline'] + ' ' + r['flight'] + ' ' + r['city'] + ' ' + r['time'] for r in rows[:3])}")
     except Exception as e:
-        out.append(f"couldn't load the page: {type(e).__name__}: {str(e)[:200]}")
+        out.append(f"couldn't read the board: {type(e).__name__}: {str(e)[:200]}")
     for ln in out:
         print(ln)
         if os.environ.get("GITHUB_ACTIONS"):

@@ -23,7 +23,7 @@ import requests
 
 BRANCH = "gh-pages"
 KEEP_DAYS = 3
-WAIT = 600   # seconds to wait for GitHub to publish the new files
+WAIT = 1800   # seconds to wait for GitHub to publish the new files (usually 1-2 min)
 
 
 class NotAvailable(Exception):

@@ -94,7 +94,7 @@ def _eppley_counts(cfg: Config, day) -> str:
         b = st.get("eppley_arrivals") or {}
         if b:
             out += (f". Arrivals: {b.get('from_opensky', 0)} from OpenSky + {b.get('moved_from_council_bluffs', 0)} "
-                    f"moved from Council Bluffs/Millard + {b.get('filled_in', 0)} filled in")
+                    f"moved from fields next to Eppley + {b.get('filled_in', 0)} filled in")
         if st.get("opensky_requests"):
             out += f". OpenSky requests this run: {st['opensky_requests']}"
         return out
@@ -164,17 +164,20 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     scheduled, problems = [], []
     if in_buffer:
         log(cfg, f"{today}: already in Buffer from an earlier run, not scheduled again: {', '.join(sorted(in_buffer))}")
-    # Store the videos on GitHub so Buffer's links never expire (see publishers/github_host.py)
+    # Serve the videos from GitHub Pages so Buffer's links play and never expire (publishers/pages_host.py)
     links, storage_note = {}, ""
     todo = [Path(st["posts"][sl.key]["video"]) for sl in cfg.slots if sl.key in times and sl.key not in in_buffer
             and (not only or sl.key in only) and st["posts"].get(sl.key, {}).get("video_exists")]
     if todo and not cfg.dry_run:
-        from .publishers import github_host
+        from .publishers import github_host, pages_host
         try:
-            links = github_host.upload(todo, today)
-            removed = github_host.cleanup(now.date())
-            log(cfg, f"Videos stored on GitHub ({len(links)})" + (f"; removed {removed} old day(s)" if removed else ""))
-        except Exception as e:   # NotAvailable, or GitHub hiccup: fall back to the free hosts
+            links = pages_host.publish(todo, today)
+            log(cfg, f"Videos live on GitHub Pages ({len(links)}): {next(iter(links.values()))}")
+            try:   # the old release copies (Buffer can't play those links) are no longer needed
+                github_host.cleanup(now.date() + timedelta(days=github_host.KEEP_DAYS + 1))
+            except Exception:
+                pass
+        except Exception as e:   # Pages not on yet, or a GitHub hiccup: fall back to the free hosts
             storage_note = str(e)
             log(cfg, f"Couldn't store the videos on GitHub: {e}")
             if os.environ.get("GITHUB_ACTIONS"):
@@ -255,7 +258,7 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     if st.get("incomplete"):
         body += "\n\n⚠️ " + st["incomplete"] + " Check the videos in Buffer; delete them if they look wrong."
     if storage_note:
-        body += "\n\n⚠️ The videos couldn't be stored on GitHub, so Buffer may lose them before posting: " + storage_note[:300]
+        body += "\n\n⚠️ The videos couldn't be put on GitHub Pages, so Buffer may not be able to play them: " + storage_note[:400]
     if problems:
         body += "\n\nProblems:\n" + "\n".join(p[:300] for p in problems[:6])
     body += "\n\nReview them in the Buffer app (Queue): edit or delete anything you don't want before it posts."

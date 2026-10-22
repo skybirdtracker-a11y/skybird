@@ -153,17 +153,18 @@ def fetch_opensky(cfg: Config, day: date, session=None) -> list[dict]:
     start, stop = cfg.flight_day(day)
     begin, end = int(start.timestamp()), int(stop.timestamp()) - 1
     seen, flights = set(), []
-    # One request per airport and direction. (Asking in 6-hour pieces used 4x more of
-    # OpenSky's daily allowance and didn't bring back the missing arrivals.)
-    for icao in METRO:
-        for kind in ("departure", "arrival"):
-            got = _get(cfg, s, f"/flights/{kind}", {"airport": icao, "begin": begin, "end": end})
-            for f in got:
-                key = (f.get("icao24"), f.get("firstSeen"), f.get("lastSeen"))
-                if key in seen:
-                    continue
-                seen.add(key)
-                flights.append(f)
+    # One request per airport and direction, plus one per learned small field next to
+    # Eppley. (Asking in 6-hour pieces used 4x more of the allowance and didn't help.)
+    asks = [(icao, kind) for icao in METRO for kind in ("departure", "arrival")]
+    asks += [(code, "arrival") for code in near_fields(cfg)]   # small fields where Eppley landings get filed
+    for icao, kind in asks:
+        got = _get(cfg, s, f"/flights/{kind}", {"airport": icao, "begin": begin, "end": end})
+        for f in got:
+            key = (f.get("icao24"), f.get("firstSeen"), f.get("lastSeen"))
+            if key in seen:
+                continue
+            seen.add(key)
+            flights.append(f)
     if cfg.secrets.get("opensky_client_id"):
         try:
             cfg.save_secrets()  # keep the cached token
@@ -259,12 +260,13 @@ def fix_airline_fields(cfg: Config, raw: list[dict]) -> int:
     jet low on final, OpenSky picks the nearest airport.) Offutt is left alone: military
     charter airliners really do use it. Returns how many flights were moved."""
     airlines, mil, excl = _lists(cfg)
+    near = set(near_fields(cfg))
     n = 0
     for f in raw:
         if classify(f, airlines, mil, excl) != "commercial":
             continue
         for k in ("estArrivalAirport", "estDepartureAirport"):
-            if f.get(k) in SMALL_FIELDS:
+            if f.get(k) in SMALL_FIELDS or f.get(k) in near:
                 f[k] = HUB
                 f["moved_to_eppley"] = True
                 n += 1
@@ -299,10 +301,14 @@ def infer_arrivals(cfg: Config, raw: list[dict], day: date, session=None) -> lis
     for f in sorted(deps, key=lambda f: rank.get(classify(f, airlines, mil, excl), 3)):
         if f["icao24"] not in planes:
             planes.append(f["icao24"])
+    # OpenSky only answers across 2 of its UTC days: start at midnight UTC of the flight
+    # day's first UTC day (that still covers ~3.5 h before the 3:30 AM start).
+    look_from = max(begin - 12 * 3600, begin - begin % 86400)
     added, asked = [], 0
+    learned = []
     for icao24 in planes[:MAX_ARRIVAL_LOOKUPS]:
         try:
-            hist = _get(cfg, session, "/flights/aircraft", {"icao24": icao24, "begin": begin - 12 * 3600, "end": end})
+            hist = _get(cfg, session, "/flights/aircraft", {"icao24": icao24, "begin": look_from, "end": end})
         except DataError as e:
             log(cfg, f"Stopped filling in arrivals after {asked} planes: {e}")
             import os
@@ -323,11 +329,43 @@ def infer_arrivals(cfg: Config, raw: list[dict], day: date, session=None) -> lis
                 continue   # already counted, or it landed outside this flight day
             if p.get("estArrivalAirport") in METRO or p.get("estDepartureAirport") == field:
                 continue   # OpenSky did catch this landing, or it's a local loop
-            added.append(dict(p, estArrivalAirport=field, callsign=p.get("callsign") or d.get("callsign"), inferred=True))
+            if field == HUB and p.get("estArrivalAirport") and classify(p, airlines, mil, excl) == "commercial":
+                learned.append(p["estArrivalAirport"])   # a small field OpenSky files Eppley landings under
+            added.append(dict(p, estArrivalAirport=field, callsign=p.get("callsign") or d.get("callsign"),
+                              inferred=True, filed_at=p.get("estArrivalAirport")))
             known.add((icao24, p.get("firstSeen")))
     if asked:
         log(cfg, f"Filled in {len(added)} arrivals OpenSky missed (looked up {asked} planes)")
+    if learned:
+        learn_near_fields(cfg, learned)
     return added
+
+
+# ---- small fields next to Eppley that OpenSky files Eppley landings under ------------------
+# (e.g. a Southwest jet from Denver landing at Eppley was filed at "NE11", a strip
+# 7.6 km away). Learned from the fill-in; airline flights there are counted as Eppley.
+
+def near_fields(cfg: Config) -> list[str]:
+    try:
+        d = json.loads((cfg.data_dir / "near_eppley.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return []
+    # the codes seen most often first; at most 6 (each costs one request a day)
+    return [c for c, n in sorted(d.items(), key=lambda kv: -kv[1]) if n >= 2][:6]
+
+
+def learn_near_fields(cfg: Config, codes: list[str]) -> None:
+    path = cfg.data_dir / "near_eppley.json"
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        d = {}
+    for c in codes:
+        if c and c not in METRO:
+            d[c] = d.get(c, 0) + 1
+    path.write_text(json.dumps(d, indent=1), encoding="utf-8")
+    log(cfg, "Small fields OpenSky files Eppley landings under: " + ", ".join(f"{c} ({n})" for c, n in
+                                                                              sorted(d.items(), key=lambda kv: -kv[1])[:8]))
 
 
 def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:

@@ -40,6 +40,10 @@ on:
         description: "Pull the flights from OpenSky again (normally a remake reuses the morning's pull)"
         type: boolean
         default: false
+      check_opensky:
+        description: "Only send OpenSky one test request for the arrivals fill-in (posts nothing)"
+        type: boolean
+        default: false
       probe_board:
         description: "Only look at Eppley's arrivals/departures page (posts nothing, no OpenSky)"
         type: boolean
@@ -119,7 +123,7 @@ jobs:
           only="${ONLY%% *}"; [ "$only" = "every" ] && only=""
           python -m skybird --config cloud/config.toml cloud-run \
             ${{ inputs.force && '--force' || '' }} ${{ inputs.dry_run && '--dry-run' || '' }} \
-            --only "$only" --day "$DAY" --at "$POST_TIME" ${{ inputs.check_hosts && '--check-hosts' || '' }} ${{ inputs.test_notification && '--test-notify' || '' }} ${{ inputs.fresh_data && '--fresh-data' || '' }} ${{ inputs.probe_board && '--probe-board' || '' }}
+            --only "$only" --day "$DAY" --at "$POST_TIME" ${{ inputs.check_hosts && '--check-hosts' || '' }} ${{ inputs.test_notification && '--test-notify' || '' }} ${{ inputs.fresh_data && '--fresh-data' || '' }} ${{ inputs.probe_board && '--probe-board' || '' }} ${{ inputs.check_opensky && '--check-opensky' || '' }}
 
       - name: Save SkyBird's memory
         if: always()

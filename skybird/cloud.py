@@ -508,3 +508,44 @@ def probe_board(session=None) -> list[str]:
         if os.environ.get("GITHUB_ACTIONS"):
             print(f"::notice title=Airport board::{ln[:950]}")
     return out
+
+
+def check_opensky(cfg: Config) -> list[str]:
+    """Send OpenSky ONE arrival fill-in request (plus a second shape if the first is
+    refused) for a plane from the latest saved flight list, and report its exact answer."""
+    import json
+    import requests
+    from . import flights as fl
+    load_env_secrets(cfg)
+    out = []
+    files = sorted((cfg.data_dir / "flights").glob("*.json"))
+    if not files:
+        out.append("no saved flight list yet")
+    else:
+        day = date.fromisoformat(files[-1].stem)
+        raw = json.loads(files[-1].read_text(encoding="utf-8"))["flights"]
+        dep = next((f for f in raw if f.get("estDepartureAirport") == "KOMA" and f.get("icao24")
+                    and (f.get("callsign") or "").startswith(("SWA", "UAL", "AAL", "DAL"))), None)
+        if not dep:
+            out.append(f"no airline departure in the {day} list")
+        else:
+            s = requests.Session()
+            tok = fl._token(cfg, s)
+            h = {"Authorization": f"Bearer {tok}"} if tok else {}
+            start, stop = cfg.flight_day(day)
+            tries = [("as SkyBird asks (36 h window)", int(start.timestamp()) - 12 * 3600, int(stop.timestamp()) - 1),
+                     ("24 h before its departure", dep["firstSeen"] - 24 * 3600, dep["firstSeen"])]
+            for label, b, e in tries:
+                r = s.get(f"{fl.API}/flights/aircraft", params={"icao24": dep["icao24"], "begin": b, "end": e},
+                          headers=h, timeout=60)
+                body = r.text[:300].replace("\n", " ")
+                n = len(r.json()) if r.status_code == 200 else 0
+                out.append(f"{label}: HTTP {r.status_code}, {n} flights; limit left "
+                           f"{r.headers.get('X-Rate-Limit-Remaining', '?')}; answer: {body}")
+                if r.status_code == 200:
+                    break
+    for ln in out:
+        print(ln)
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::notice title=OpenSky check::{ln[:950]}")
+    return out

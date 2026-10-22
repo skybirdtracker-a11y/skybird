@@ -305,6 +305,9 @@ def infer_arrivals(cfg: Config, raw: list[dict], day: date, session=None) -> lis
             hist = _get(cfg, session, "/flights/aircraft", {"icao24": icao24, "begin": begin - 12 * 3600, "end": end})
         except DataError as e:
             log(cfg, f"Stopped filling in arrivals after {asked} planes: {e}")
+            import os
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(f"::warning title=Arrival fill-in stopped::after {asked} planes: {str(e)[:800]}")
             break
         asked += 1
         hist = sorted(hist, key=lambda h: h.get("lastSeen") or 0)

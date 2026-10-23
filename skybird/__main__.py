@@ -61,6 +61,7 @@ def main(argv=None):
     p.add_argument("--check-hosts", action="store_true", help="only test which video hosts accept uploads")
     p.add_argument("--test-notify", action="store_true", help="only send a test phone notification")
     p.add_argument("--check-posts", action="store_true", help="only ask Buffer whether today's posts went out")
+    p.add_argument("--weekly-report", action="store_true", help="only collect Buffer's numbers and write the weekly report")
     p.add_argument("--check-opensky", action="store_true", help="only send OpenSky one arrival fill-in request")
     p.add_argument("--probe-board", action="store_true", help="only look at Eppley's arrivals/departures page")
     p.add_argument("--fresh-data", action="store_true", help="pull the flights from OpenSky again even if today's are saved")
@@ -93,6 +94,10 @@ def main(argv=None):
             from .cloud import probe_board, snapshot_board
             probe_board()
             snapshot_board(cfg)
+            return
+        if a.weekly_report:
+            from .report import run as weekly_report
+            weekly_report(cfg)
             return
         if a.check_posts:
             from .cloud import check_posts

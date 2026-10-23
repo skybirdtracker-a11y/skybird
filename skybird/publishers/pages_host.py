@@ -6,7 +6,7 @@ permanent addresses. (Release files didn't work: their link redirects to a downl
 that expires after 30 minutes, which Buffer can't preview.)
 
 The videos live on a separate `gh-pages` branch that is rewritten each time with only
-the last KEEP_DAYS days, so the repository doesn't grow. Needs a public repository
+the last KEEP_DAYS days (plus the small weekly reports), so the repository doesn't grow. Needs a public repository
 with Pages turned on (Settings -> Pages -> Deploy from a branch -> gh-pages).
 """
 from __future__ import annotations
@@ -45,13 +45,13 @@ def _git(*args, cwd):
     return r.stdout
 
 
-def publish(videos: list[Path], day: date, session=None, wait: int = WAIT) -> dict[str, str]:
-    """Put the videos on GitHub Pages; returns {file name: playable link} once they're live."""
+def _rewrite(day: date, add, message: str) -> None:
+    """Rebuild the gh-pages branch: the last KEEP_DAYS days of videos and every report
+    already there, plus whatever `add(folder)` writes; then force-push it."""
     repo, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
     if not repo or not token:
         raise NotAvailable("not running on GitHub with a token")
     remote = os.environ.get("SKYBIRD_PAGES_REMOTE") or f"https://x-access-token:{token}@github.com/{repo}.git"
-    s = session or requests.Session()
     with tempfile.TemporaryDirectory() as tmp:
         old, new = Path(tmp) / "old", Path(tmp) / "new"
         old.mkdir(), new.mkdir()
@@ -64,25 +64,50 @@ def publish(videos: list[Path], day: date, session=None, wait: int = WAIT) -> di
         keep_from = day - timedelta(days=KEEP_DAYS - 1)
         for d in sorted((old / "videos").glob("*")) if (old / "videos").exists() else []:
             try:
-                if date.fromisoformat(d.name) >= keep_from and d.name != day.isoformat():
+                if keep_from <= date.fromisoformat(d.name) <= day:
                     shutil.copytree(d, new / "videos" / d.name)
             except ValueError:
                 continue
-        target = new / "videos" / day.isoformat()
-        target.mkdir(parents=True, exist_ok=True)
-        for v in videos:
-            shutil.copy2(v, target / v.name)
+        if (old / "reports").exists():   # weekly reports stay for good (a few KB each)
+            shutil.copytree(old / "reports", new / "reports")
+        add(new)
         (new / ".nojekyll").write_text("")
-        (new / "index.html").write_text("<!doctype html><title>SkyBird videos</title>"
-                                        "<p>Video files for SkyBird's scheduled posts.</p>")
+        (new / "index.html").write_text("<!doctype html><title>SkyBird</title>"
+                                        "<p>Video files for SkyBird's scheduled posts.</p>"
+                                        "<p><a href='reports/latest.html'>Latest weekly report</a></p>")
         _git("init", "-q", "-b", BRANCH, cwd=new)
         _git("add", "-A", cwd=new)
         _git("-c", "user.name=SkyBird", "-c", "user.email=skybird@users.noreply.github.com",
-             "commit", "-q", "-m", f"Videos for {day.isoformat()}", cwd=new)
+             "commit", "-q", "-m", message, cwd=new)
         _git("push", "-q", "--force", remote, f"{BRANCH}:{BRANCH}", cwd=new)
+
+
+def publish(videos: list[Path], day: date, session=None, wait: int = WAIT) -> dict[str, str]:
+    """Put the videos on GitHub Pages; returns {file name: playable link} once they're live."""
+    s = session or requests.Session()
+
+    def add(new):
+        target = new / "videos" / day.isoformat()
+        if target.exists():
+            shutil.rmtree(target)   # a remake replaces that day's files
+        target.mkdir(parents=True, exist_ok=True)
+        for v in videos:
+            shutil.copy2(v, target / v.name)
+    _rewrite(day, add, f"Videos for {day.isoformat()}")
     links = {v.name: f"{base_url()}/videos/{day.isoformat()}/{v.name}" for v in videos}
     _wait_live(list(links.values()), s, wait)
     return links
+
+
+def publish_report(page: str, day: date) -> str:
+    """Put a weekly report on GitHub Pages; returns its permanent link (reports/latest.html
+    always shows the newest). Doesn't wait for GitHub to publish it."""
+    def add(new):
+        (new / "reports").mkdir(exist_ok=True)
+        (new / "reports" / f"{day.isoformat()}.html").write_text(page, encoding="utf-8")
+        (new / "reports" / "latest.html").write_text(page, encoding="utf-8")
+    _rewrite(day, add, f"Weekly report {day.isoformat()}")
+    return f"{base_url()}/reports/latest.html"
 
 
 def _wait_live(urls: list[str], s, wait: int) -> None:

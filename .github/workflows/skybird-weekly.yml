@@ -1,0 +1,53 @@
+# SkyBird weekly report: Monday morning, asks Buffer for the numbers of the last two
+# weeks' posts, compares post types / caption styles / calls to action / @tags, puts the
+# report on GitHub Pages (reports/latest.html) and sends a phone notification.
+# Posts nothing and doesn't use OpenSky.
+name: SkyBird weekly report
+
+on:
+  schedule:
+    - cron: "20 14 * * 1"   # Mondays 8:20 AM Central (9:20 during daylight time)
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to update the gh-pages branch with the report
+
+concurrency:
+  group: skybird
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Restore SkyBird's memory (the posts and their numbers)
+        uses: actions/cache/restore@v6
+        with:
+          path: cloud/data
+          key: skybird-data-${{ github.run_id }}
+          restore-keys: skybird-data-
+
+      - name: Collect Buffer's numbers and write the report
+        env:
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m skybird --config cloud/config.toml cloud-run --weekly-report
+
+      - name: Save SkyBird's memory
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: cloud/data
+          key: skybird-data-${{ github.run_id }}

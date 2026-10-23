@@ -347,7 +347,7 @@ def check_posts(cfg: Config, now: datetime | None = None) -> list[str]:
                 try:
                     status = buffer.post_status(key, r["id"])
                 except Exception as e:
-                    status = f"unknown ({str(e)[:80]})"
+                    status = f"unknown ({str(e)[:400]})"
                 late = now > due + _td(hours=1)
                 when = due.strftime("%I:%M %p").lstrip("0")
                 if status == "sent":

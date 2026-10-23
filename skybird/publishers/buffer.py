@@ -207,36 +207,129 @@ METRIC_NAMES = {"views": "views", "plays": "views", "videoviews": "views", "impr
                 "engagementrate": "engagement_rate", "follows": "follows"}
 
 
-def post_metrics(api_key: str, post_id: str, session=requests) -> dict:
-    """{"views": .., "likes": .., ...} for a post Buffer sent; {} if it has no numbers yet."""
+def _metrics_of(post: dict, field: str = "metrics") -> dict:
+    """Buffer's numbers as {"views": .., "likes": ..}. They come either as a list of
+    {type, value} or as one object of named numbers."""
+    raw = post.get(field)
+    pairs = []
+    if isinstance(raw, list):
+        for m in raw:
+            if isinstance(m, dict):
+                pairs.append((m.get("type") or m.get("name") or m.get("metric") or "", m.get("value")))
+    elif isinstance(raw, dict):
+        pairs = list(raw.items())
+    out = {}
+    for typ, val in pairs:
+        name = METRIC_NAMES.get(str(typ).replace("_", "").lower())
+        if name and isinstance(val, (int, float)) and not isinstance(val, bool):
+            # "reactions" and "likes" can both be reported for one post: keep the larger
+            out[name] = max(out.get(name, 0), val) if name == "likes" else \
+                out.get(name, 0) + val if name == "shares" else val
+    if not out.get("views"):   # Facebook reports impressions/reach, not plays
+        out["views"] = out.get("impressions") or out.get("reach") or out.get("views")
+    if out.get("views") is None:
+        out.pop("views", None)
+    return out
+
+
+def _fatal(e: Exception) -> bool:
+    return "rejected the API key" in str(e) or "rate limit" in str(e)
+
+
+# Buffer's API is in beta and its query shapes have changed under us, so SkyBird asks
+# the API itself (GraphQL introspection) how one post is looked up and what it reports.
+_TYPE = """query($n: String!) { __type(name: $n) { fields { name args { name type { ...T } } type { ...T } }
+  inputFields { name type { ...T } } } }
+fragment T on __Type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }"""
+PLAIN_FIELDS = ("id", "status", "sentAt", "dueAt", "externalLink", "serviceLink", "error")
+METRIC_WORDS = ("metric", "statistic", "analytic", "insight", "engagement")
+_SHAPE: dict = {}
+
+
+def _named(t: dict) -> tuple[str, str]:
+    """(kind, name) of a GraphQL type with its NON_NULL / LIST wrappers removed."""
+    while t and t.get("ofType") and t.get("kind") in ("NON_NULL", "LIST"):
+        t = t["ofType"]
+    return (t or {}).get("kind", ""), (t or {}).get("name", "")
+
+
+def _type(api_key: str, name: str, session) -> dict:
+    return gql(api_key, _TYPE, {"n": name}, session=session).get("__type") or {}
+
+
+def post_shape(api_key: str, session=requests) -> dict | None:
+    """{"arg": 'input: {id: %s}', "fields": "id status ...", "metrics": field or ""}, or
+    None if Buffer won't describe itself (then the fixed guesses below are used)."""
+    if api_key in _SHAPE:
+        return _SHAPE[api_key]
+    try:
+        query = _type(api_key, "Query", session)
+        field = next((f for f in query.get("fields") or [] if f["name"] == "post"), None)
+        if not field:
+            return None
+        arg = ""
+        for a in field.get("args") or []:
+            kind, tname = _named(a["type"])
+            if a["name"] in ("id", "postId") and kind == "SCALAR":
+                arg = f"{a['name']}: %s"
+            elif kind == "INPUT_OBJECT":
+                names = [f["name"] for f in _type(api_key, tname, session).get("inputFields") or []]
+                key = next((n for n in ("id", "postId") if n in names), "")
+                arg = f"{a['name']}: {{{key}: %s}}" if key else ""
+            if arg:
+                break
+        if not arg:
+            return None
+        fields, metrics = [], ""
+        for f in _type(api_key, _named(field["type"])[1], session).get("fields") or []:
+            if any(a["type"].get("kind") == "NON_NULL" for a in f.get("args") or []):
+                continue   # needs arguments we can't guess
+            kind, tname = _named(f["type"])
+            if kind in ("SCALAR", "ENUM") and f["name"] in PLAIN_FIELDS:
+                fields.append(f["name"])
+            elif kind == "OBJECT" and not metrics and any(w in f["name"].lower() for w in METRIC_WORDS):
+                subs = [g["name"] for g in _type(api_key, tname, session).get("fields") or []
+                        if _named(g["type"])[0] in ("SCALAR", "ENUM")
+                        and not any(a["type"].get("kind") == "NON_NULL" for a in g.get("args") or [])]
+                if subs:
+                    metrics = f"{f['name']} {{ {' '.join(subs)} }}"
+        _SHAPE[api_key] = {"arg": arg, "fields": " ".join(fields or ["id"]), "metrics": metrics}
+    except PublishError as e:
+        if _fatal(e):
+            raise
+        return None
+    return _SHAPE[api_key]
+
+
+def _read_post(api_key: str, post_id: str, guesses: tuple[str, ...], want_metrics: bool, session) -> tuple[dict | None, str]:
+    """(the post as Buffer returns it, name of its numbers field). Every error is kept,
+    so a failure says what Buffer actually objected to."""
     import json
-    last = None
-    for q in POST_QUERIES:
+    shape = post_shape(api_key, session)
+    if shape:
+        sel = shape["fields"] + (" " + shape["metrics"] if want_metrics and shape["metrics"] else "")
+        guesses = (f"query {{ post({shape['arg']}) {{ {sel} }} }}",)
+    errors = []
+    for q in guesses:
         try:
             data = gql(api_key, q % json.dumps(post_id), session=session)
         except PublishError as e:
-            last = e
-            if "rejected the API key" in str(e) or "rate limit" in str(e):
+            if _fatal(e):
                 raise
+            errors.append(str(e).replace("Buffer: ", "", 1))
             continue
-        post = data.get("post") or {}
-        out = {}
-        for m in post.get("metrics") or []:
-            name = METRIC_NAMES.get(str(m.get("type", "")).replace("_", "").lower())
-            val = m.get("value")
-            if name and isinstance(val, (int, float)):
-                # "reactions" and "likes" can both be reported for one post: keep the larger
-                out[name] = max(out.get(name, 0), val) if name == "likes" else \
-                    out.get(name, 0) + val if name == "shares" else val
-        if not out.get("views"):   # Facebook reports impressions/reach, not plays
-            out["views"] = out.get("impressions") or out.get("reach") or out.get("views")
-        if out.get("views") is None:
-            out.pop("views", None)
-        return out
-    raise last or PublishError("Buffer didn't return numbers")
+        field = shape["metrics"].split(" ", 1)[0] if shape and shape["metrics"] else "metrics"
+        return data.get("post"), field
+    raise PublishError("Buffer: " + " | ".join(dict.fromkeys(errors)) if errors else "Buffer didn't answer")
 
 
-# Buffer's API is in beta, so a few query shapes are tried; an unknown field is just an error.
+def post_metrics(api_key: str, post_id: str, session=requests) -> dict:
+    """{"views": .., "likes": .., ...} for a post Buffer sent; {} if it has no numbers yet."""
+    post, field = _read_post(api_key, post_id, POST_QUERIES, True, session)
+    return _metrics_of(post or {}, field)
+
+
+# Used only if Buffer won't describe its API (see post_shape).
 STATUS_QUERIES = ("query { post(input: {id: %s}) { id status sentAt } }",
                   "query { post(input: {id: %s}) { id status } }",
                   "query { post(id: %s) { id status } }")
@@ -244,26 +337,15 @@ STATUS_QUERIES = ("query { post(input: {id: %s}) { id status sentAt } }",
 
 def post_status(api_key: str, post_id: str, session=requests) -> str:
     """'sent', 'failed', 'waiting' (still queued) or 'unknown' for a post Buffer has."""
-    import json
-    last = None
-    for q in STATUS_QUERIES:
-        try:
-            data = gql(api_key, q % json.dumps(post_id), session=session)
-        except PublishError as e:
-            last = e
-            if "rejected the API key" in str(e) or "rate limit" in str(e):
-                raise
-            continue
-        p = data.get("post")
-        if p is None:
-            return "unknown"
-        st = str(p.get("status") or "").lower()
-        if p.get("sentAt") or st in ("sent", "published", "posted"):
-            return "sent"
-        if any(w in st for w in ("error", "fail", "rejected")):
-            return "failed"
-        return "waiting" if st in ("buffer", "scheduled", "queued", "pending", "sending", "draft", "") else "unknown"
-    raise last or PublishError("Buffer didn't say")
+    p, _ = _read_post(api_key, post_id, STATUS_QUERIES, False, session)
+    if p is None:
+        return "unknown"
+    st = str(p.get("status") or "").lower()
+    if p.get("sentAt") or st in ("sent", "published", "posted"):
+        return "sent"
+    if any(w in st for w in ("error", "fail", "rejected")):
+        return "failed"
+    return "waiting" if st in ("buffer", "scheduled", "queued", "pending", "sending", "draft", "") else "unknown"
 
 
 # ---- posting ----------------------------------------------------------------------

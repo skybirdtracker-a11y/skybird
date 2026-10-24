@@ -44,8 +44,10 @@ open_browser_on_prepare = true
 # rather have one subfolder per day.)
 folder = "videos"
 stats_file = "stats.json"
-# The videos show yesterday's flights by default (-1). Use 0 for same-day.
-data_day_offset = -1
+# Which day the videos show: -2 = the day before yesterday. OpenSky publishes each UTC day
+# overnight, so at 4 AM it has nothing after 7 PM Omaha time (6 PM in winter) for
+# yesterday; two days back is complete through 3:29 AM. (-1 = yesterday, cut off at 7 PM.)
+data_day_offset = -2
 # Optional: command that renders the four videos before captions are built.
 # Runs from the folder this config file is in. Leave blank if you render separately.
 render_command = ""

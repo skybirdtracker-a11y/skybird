@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import time
 import os
 import math
 from datetime import date, datetime
@@ -248,6 +249,10 @@ class Reel:
                  week: list | None = None):
         self.cfg, self.slot, self.day, self.post, self.f, self.demo = cfg, slot, day, post, fonts, demo
         self.spec = POSTS[slot]
+        if int(cfg.section("media").get("data_day_offset", -1)) != -1:   # not yesterday: name the day
+            name = day.strftime("%A")
+            self.spec = {k: tuple(t.replace("yesterday", name) for t in v) if isinstance(v, tuple) else v
+                         for k, v in self.spec.items()}
         self.s = post["stats"]
         self.week = week or []
         self.handle = cfg.general.get("handle", "@skybirdomaha")
@@ -818,6 +823,18 @@ def _save_flight_list(cfg: Config, post_date: date, flight_day: date, raw: list[
     cfg.media_file(post_date, "flights.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
 
 
+def _complete(cfg: Config, flight_day: date, master: Path) -> bool:
+    """Was the saved list pulled after OpenSky had published the whole flight day? It
+    publishes each UTC day overnight, so a pull before the UTC day holding the flight
+    day's 3:29 AM end was over is missing the evening (pulled again instead)."""
+    try:
+        got = json.loads(master.read_text(encoding="utf-8")).get("fetched_at") or 0
+    except (OSError, ValueError):
+        return False
+    end = int(cfg.flight_day(flight_day)[1].timestamp())
+    return got >= end - end % 86400 + 86400
+
+
 def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[str] | None = None) -> Path:
     """Fetch the flight day shown on `post_date` and write the reels + stats.json."""
     import requests
@@ -832,7 +849,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     fresh = os.environ.get("SKYBIRD_FRESH_DATA") in ("1", "true", "yes")
     if demo:
         raw, info = fl.demo_raw(flight_day, cfg), {}
-    elif master.exists() and not fresh:
+    elif master.exists() and not fresh and _complete(cfg, flight_day, master):
         # Already pulled from OpenSky today: reuse it (no new requests), so remakes and
         # backup runs never spend the daily allowance again.
         saved = json.loads(master.read_text(encoding="utf-8"))
@@ -854,7 +871,8 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         breakdown["total"] = sum(breakdown.values())
         info = fl.aircraft_info(cfg, {f.get("icao24") for f in raw if f.get("icao24")}, session)
         master.parent.mkdir(parents=True, exist_ok=True)
-        master.write_text(json.dumps({"flights": raw, "eppley_arrivals": breakdown}), encoding="utf-8")
+        master.write_text(json.dumps({"flights": raw, "eppley_arrivals": breakdown,
+                                      "fetched_at": int(time.time())}), encoding="utf-8")
         for old in sorted(master.parent.glob("*.json"))[:-10]:   # keep the last 10 days
             old.unlink(missing_ok=True)
     _save_flight_list(cfg, post_date, flight_day, raw)

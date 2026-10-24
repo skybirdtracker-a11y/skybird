@@ -122,7 +122,9 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
     follower growth (Did you know, Guess first, Local tie-in on event days)."""
     from datetime import timedelta
     day = data_date.strftime("%A")
-    post_day = data_date + timedelta(days=1)
+    lag = -int(cfg.section("media").get("data_day_offset", -1))
+    post_day = data_date + timedelta(days=lag)
+    when = "yesterday" if lag == 1 else f"on {day}"   # the cloud posts two days later (complete data)
     dep, arr = _n(stats.get("departures")), _n(stats.get("arrivals"))
     total = _n(stats.get("flights")) or dep + arr
     top = _first(stats.get("top_destinations"))
@@ -175,31 +177,31 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
     # Styles being tested for follower growth (caption handoff, section D)
     busiest_hour = stats.get("busiest_hour")
     if slot_key == "commercial":
-        dyk = (f"Did you know? Eppley's busiest hour yesterday was {busiest_hour}. If you've ever wondered why "
+        dyk = (f"Did you know? Eppley's busiest hour {when} was {busiest_hour}. If you've ever wondered why "
                "security was packed, now you know. ✈️") if busiest_hour else \
-              f"Did you know? Eppley handled {n} airline flights yesterday, about one every few minutes. ✈️"
-        guess = "Guess before you watch: what was Eppley's top destination yesterday? 👇 Answer at the end of the video."
+              f"Did you know? Eppley handled {n} airline flights {when}, about one every few minutes. ✈️"
+        guess = f"Guess before you watch: what was Eppley's top destination {when}? 👇 Answer at the end of the video."
     elif slot_key == "private":
-        dyk = f"Did you know? Private jets made {n} takeoffs and landings around the Omaha metro yesterday."
+        dyk = f"Did you know? Private jets made {n} takeoffs and landings around the Omaha metro {when}."
         if ftype.get("name"):
             dyk += f" The most common type was the {ftype['name']}."
-        guess = "Guess: how many private jets flew into Omaha yesterday? Closest guess in the comments gets bragging rights."
+        guess = f"Guess: how many private jets flew into Omaha {when}? Closest guess in the comments gets bragging rights."
     elif slot_key == "military":
-        dyk = (f"Did you know? Offutt logged at least {n} military movements yesterday, and that's only "
+        dyk = (f"Did you know? Offutt logged at least {n} military movements {when}, and that's only "
                "the ones broadcasting their position.")
         guess = ""  # military stays counts-only and low-key: no guessing games
     else:
-        dyk = f"Did you know? There were {n} takeoffs and landings across the Omaha metro's four airfields yesterday."
+        dyk = f"Did you know? There were {n} takeoffs and landings across the Omaha metro's four airfields {when}."
         if field.get("code"):
             dyk += f" Busiest field: {field.get('name') or field['code']}."
-        guess = "Which Omaha-area airport do you think was busiest yesterday? Drop your guess 👇"
+        guess = f"Which Omaha-area airport do you think was busiest {when}? Drop your guess 👇"
     local = ""
     if ev and slot_key != "military":
         noun = {"commercial": "airline flights at Eppley", "private": "private jet takeoffs and landings"}.get(slot_key, "takeoffs and landings across the metro")
         if "thanksgiving" in ev.get("name", "").lower():
-            local = f"Thanksgiving travel check: Eppley moved {n} flights yesterday. Where are you headed? 🦃"
+            local = f"Thanksgiving travel check: Eppley moved {n} flights {when}. Where are you headed? 🦃"
         elif ev_hook:
-            local = f"{ev_hook} {n} {noun} yesterday."
+            local = f"{ev_hook} {n} {noun} {when}."
 
     opts = [
         {"id": "friendly", "label": "Friendly", "text": friendly.strip()},

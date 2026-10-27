@@ -78,6 +78,27 @@ time = "18:00"
 file = "post4_all.mp4"
 platforms = ["instagram", "facebook", "tiktok"]
 
+# Sundays only: the week in one video (format #07).
+[slots.wrap]
+title = "Sunday weekly wrap"
+time = "10:00"
+file = "post5_wrap.mp4"
+platforms = ["instagram", "facebook", "tiktok"]
+days = ["sun"]
+
+# ---- New formats (the 4-week test) ------------------------------------------
+# On these dates a new format takes that post's place. Keys: commercial (9 AM),
+# private (11 AM), military (1 PM), all (6 PM). Formats: guess (#01 Guess the
+# destination), scoreboard (#10 Metro scoreboard), lincoln (private jets into Lincoln
+# for a Husker home game; post it the Sunday after). If a format can't be made, the
+# regular post goes out instead. Delete a line to skip that test.
+[formats]
+"2026-10-28" = { commercial = "guess" }
+"2026-10-30" = { all = "scoreboard" }
+"2026-11-01" = { commercial = "lincoln" }
+"2026-11-06" = { all = "scoreboard" }
+"2026-11-22" = { commercial = "lincoln" }
+
 # ---- How posts get published ----------------------------------------------
 [publisher]
 # "buffer"      = through buffer.com's FREE plan (3 channels = IG + FB + TikTok). No developer

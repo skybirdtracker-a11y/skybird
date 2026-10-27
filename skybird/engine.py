@@ -98,7 +98,7 @@ def run_render(cfg: Config, post_date: date, *, demo: bool = False, force: bool 
     SkyBird's built-in renderer (OpenSky flight data). Returns True on success."""
     cmd = (cfg.section("media").get("render_command") or "").strip()
     folder = cfg.media_folder(post_date)
-    have_all = all(cfg.media_file(post_date, s.file).exists() for s in cfg.slots)
+    have_all = all(cfg.media_file(post_date, s.file).exists() for s in cfg.slots if cfg.slot_active(s.key, post_date))
     try:
         if json.loads(cfg.media_file(post_date, "stats.json").read_text(encoding="utf-8")).get("source") == "sample":
             have_all = False  # sample videos never count as the real ones
@@ -175,14 +175,21 @@ def prepare(cfg: Config, post_date: date, *, force: bool = False, render: bool =
 
         from . import insights
         tests = insights.test_times(cfg, post_date)
+        from . import formats
         for slot in cfg.slots:
+            if not cfg.slot_active(slot.key, post_date):
+                continue
             s_stats = (stats.get("posts") or {}).get(slot.key, {})
-            evs = events_for(cfg, post_date, slot.key)
-            options = captions.build_options(cfg, slot.key, s_stats, data_date, evs)
+            fmt = s_stats.get("format")   # a new format took this post's place (skybird/formats.py)
+            tag_slot = formats.base_slot(fmt, slot.key) if fmt else slot.key
+            evs = events_for(cfg, post_date, slot.key if slot.key in captions.SLOT_NOUN else "all")
+            options = (formats.caption_options(fmt, s_stats, data_date, post_date) if fmt
+                       else captions.build_options(cfg, slot.key, s_stats, data_date, evs))
             video = cfg.media_file(post_date, slot.file)
             prev = (existing or {}).get("posts", {}).get(slot.key, {})
             state["posts"][slot.key] = {
-                "title": slot.title,
+                "title": formats.title(fmt) if fmt else slot.title,
+                "format": fmt or "",
                 "time": tests.get(slot.key, slot.time.strftime("%H:%M")),
                 "time_test": slot.key in tests,
                 "usual_time": slot.time.strftime("%H:%M"),
@@ -192,9 +199,10 @@ def prepare(cfg: Config, post_date: date, *, force: bool = False, render: bool =
                 "options": options,
                 "choice": options[0]["id"],
                 "caption": options[0]["text"],
-                "hashtags": captions.hashtag_choices(cfg, slot.key, s_stats, evs),
-                "tiktok_priority": captions.tiktok_priority(cfg, slot.key),
-                "mentions": {p: captions.mention_choices(cfg, p, evs, slot.key, s_stats, post_date) for p in PLATFORMS},
+                "hashtags": (formats.hashtag_choices(cfg, fmt, tag_slot, s_stats, evs) if fmt
+                             else captions.hashtag_choices(cfg, slot.key, s_stats, evs)),
+                "tiktok_priority": formats.TIKTOK[fmt] if fmt else captions.tiktok_priority(cfg, slot.key),
+                "mentions": {p: captions.mention_choices(cfg, p, evs, tag_slot, s_stats, post_date) for p in PLATFORMS},
                 "cta": options[0].get("cta", ""),
                 "platforms": {p: (p in slot.platforms and cfg.platform_enabled(p)) for p in PLATFORMS},
                 "results": prev.get("results", {}),
@@ -425,6 +433,7 @@ def tracking(cfg: Config, post_date: date, slot_key: str, post: dict) -> dict:
         "mentions": {p: [m["handle"] for m in post["mentions"].get(p, []) if m["checked"]]
                      for p, on in post["platforms"].items() if on},
         "event": ", ".join(e["name"] for e in events_for(cfg, post_date, slot_key)),
+        "format": post.get("format", ""),
     }
 
 

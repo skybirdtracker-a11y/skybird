@@ -127,7 +127,8 @@ def _group(rs: list[dict], key: str, names: dict | None = None) -> list[tuple[st
 
 
 SLOT_NAMES = {"commercial": "Eppley commercial", "private": "Private jets", "military": "Offutt military",
-              "all": "All airports"}
+              "all": "All airports", "guess": "#01 Guess the destination", "scoreboard": "#10 Metro scoreboard",
+              "wrap": "#07 Sunday weekly wrap", "lincoln": "Lincoln game-weekend jets"}
 
 
 def build(cfg: Config, now: datetime) -> dict:

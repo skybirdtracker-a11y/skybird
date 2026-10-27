@@ -67,6 +67,8 @@ def plan(cfg: Config, day, now: datetime, only: list[str] | None = None, at: str
     for slot in sorted(cfg.slots, key=lambda s: s.time):
         if only and slot.key not in only:
             continue
+        if not cfg.slot_active(slot.key, day):
+            continue
         if at:
             hh, mm = at.strip().split(":")
             want = datetime.combine(now.date(), datetime.min.time(), tzinfo=cfg.tz).replace(hour=int(hh), minute=int(mm))

@@ -25,6 +25,7 @@ class Slot:
     time: time
     file: str
     platforms: list[str]
+    days: list[str] = field(default_factory=list)   # e.g. ["sun"]; empty = every day
 
 
 @dataclass
@@ -117,8 +118,14 @@ class Config:
                 time=_parse_hhmm(times.get(key) or s.get("time", "12:00")),
                 file=s.get("file", f"{key}.mp4"),
                 platforms=[p for p in s.get("platforms", PLATFORMS) if p in PLATFORMS],
+                days=[str(d).lower()[:3] for d in s.get("days", [])],
             ))
         return out
+
+    def slot_active(self, key: str, day: date) -> bool:
+        """Does this post go out on `day`? (The Sunday wrap only runs on Sundays.)"""
+        sl = next((s for s in self.slots if s.key == key), None)
+        return bool(sl) and (not sl.days or day.strftime("%a").lower() in sl.days)
 
     def slot(self, key: str) -> Slot:
         for s in self.slots:

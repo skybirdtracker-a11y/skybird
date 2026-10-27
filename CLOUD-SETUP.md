@@ -73,3 +73,18 @@ A red ✕? Click it, then the failed step; the last lines say what's wrong (usua
 - GitHub's clock can run 5–30 minutes late at busy times. Posts are scheduled in Buffer, so they still go out on time; if the job itself runs after a post's time, that post goes out about 10 minutes later instead, with the rest an hour apart (same catch-up rule as the PC).
 - In the cloud, every post uses the day's default caption style (it rotates, so the caption tests keep running) and the pre-checked @tags. There's no approval step: Buffer's queue is your approval.
 - Engagement charts, best-time testing and phone approvals live in the PC dashboard, which keeps working whenever the PC is on (with Auto-posting off it just shows things).
+
+## New post formats (the 4-week test)
+
+On chosen days a new format takes a regular post's place. The dates live in
+`cloud/config.toml` under `[formats]` (edit them on GitHub; delete a line to skip a test):
+
+| Format | Key | Replaces |
+|---|---|---|
+| #01 Guess the destination | `guess` | 9 AM Eppley post |
+| #10 Metro scoreboard | `scoreboard` | 6 PM all-airports post |
+| Lincoln game-weekend private jets | `lincoln` | 9 AM post, the Sunday after a Husker home game |
+| #07 Sunday weekly wrap | (its own post) | extra 10 AM post every Sunday (`[slots.wrap]`) |
+
+If a format can't be made on its day, the regular post goes out instead and the run
+shows a "New format" warning. The weekly report compares each format with the post it replaced.

@@ -32,7 +32,7 @@ NAVY, BIRD, SKY, ORANGE, MINT = "#014291", "#0999EA", "#1E8BE0", "#F28F23", "#AE
 CLOUD, INK, MUTED, LINE, ICE, SEA, FOREIGN, WHITE = ("#F6F2E7", "#0A2540", "#46607A", "#D9DEE5",
                                                      "#E6F3FC", "#F3F7FB", "#EEF2F6", "#FFFFFF")
 FILES = {"commercial": "post1_commercial.mp4", "private": "post2_private.mp4",
-         "military": "post3_military.mp4", "all": "post4_all.mp4"}
+         "military": "post3_military.mp4", "all": "post4_all.mp4", "wrap": "post5_wrap.mp4"}
 ASSETS = Path(__file__).parent / "assets"
 
 POSTS = {
@@ -48,6 +48,17 @@ POSTS = {
             "dep": ("Every flight", "out of Omaha."), "arr": ("And every flight", "coming home."),
             "stats": ("The whole metro,", "by the numbers."),
             "colors": {"airline": BIRD, "bizjet": ORANGE, "prop": NAVY}},
+}
+# The new formats (skybird/formats.py) that take a regular post's place on chosen days.
+FORMAT_SPECS = {
+    "guess": {"kicker": "GUESS FIRST · EPPLEY", "fields": ["KOMA"],
+              "dep": ("Where did Eppley", "fly most?"), "stats": ("Eppley, by the", "numbers."),
+              "colors": {"dep": BIRD, "arr": ORANGE}},
+    "scoreboard": dict(POSTS["all"], kicker="METRO SCOREBOARD"),
+    "wrap": {"kicker": "THE WEEK · METRO", "fields": ["KOMA"], "stats": ("Omaha's week,", "by the numbers.")},
+    "lincoln": {"kicker": "GAME WEEKEND · LINCOLN", "fields": ["KLNK"],
+                "arr": ("Who flew in for", "the Huskers?"), "stats": ("Game weekend,", "by the numbers."),
+                "colors": {"arr": ORANGE}},
 }
 TOWNS = [("Omaha", -95.9345, 41.2565, "big"), ("Lincoln", -96.7026, 40.8136, "big"),
          ("Council Bluffs", -95.8608, 41.2619, ""), ("Bellevue", -95.9145, 41.1370, ""),
@@ -134,7 +145,7 @@ class Canvas:
     # text helpers (sizes in pixels)
     def text(self, x, y, s, px, color, font, ha="left", va="baseline", alpha=1.0, z=10, ax=None):
         return (ax or self.ui).text(x, y, s, fontsize=px * PX, color=color, fontproperties=font,
-                                    ha=ha, va=va, alpha=alpha, zorder=z)
+                                    ha=ha, va=va, alpha=max(0.0, min(1.0, alpha)), zorder=z)
 
     def width(self, s, px, font) -> float:
         t = self.ui.text(0, 0, s, fontsize=px * PX, fontproperties=font)
@@ -151,6 +162,7 @@ class Canvas:
         return [self.text(x0 + i * adv, y, ch, px, color, font, z=z, alpha=alpha) for i, ch in enumerate(s) if ch != " "]
 
     def rbox(self, x, y, w, h, r, fc, ec="none", lw=0, z=8, alpha=1.0, shadow=False):
+        alpha = max(0.0, min(1.0, alpha))
         arts = []
         if shadow:
             for i, a in enumerate((0.05, 0.04, 0.03)):
@@ -246,9 +258,10 @@ def lerp_view(v0, v1, z):
 
 class Reel:
     def __init__(self, cfg: Config, slot: str, day: date, post: dict, fonts: Fonts, demo: bool,
-                 week: list | None = None):
+                 week: list | None = None, fmt: str | None = None):
         self.cfg, self.slot, self.day, self.post, self.f, self.demo = cfg, slot, day, post, fonts, demo
-        self.spec = POSTS[slot]
+        self.fmt = fmt
+        self.spec = FORMAT_SPECS[fmt] if fmt else POSTS[slot]
         if int(cfg.section("media").get("data_day_offset", -1)) != -1:   # not yesterday: name the day
             name = day.strftime("%A")
             self.spec = {k: tuple(t.replace("yesterday", name) for t in v) if isinstance(v, tuple) else v
@@ -257,6 +270,8 @@ class Reel:
         self.week = week or []
         self.handle = cfg.general.get("handle", "@skybirdomaha")
         self.date_label = f"{day.strftime('%a').upper()} · {day.strftime('%b').upper()} {day.day}"
+        if fmt == "wrap":
+            self.date_label = self.s.get("range", "").upper()
         self.fields = [fl.place(i) for i in self.spec["fields"]]
         hub = self.fields[0]
         self.hub_icao = self.spec["fields"][0]
@@ -484,7 +499,7 @@ class Reel:
         order = sorted(ends.items(), key=lambda kv: -sum(1 for r in routes if r["end"] == kv[0]))
         offs = self._dodge([(key, (*cam.px(e["x"], e["y"]), 0.6 * 24 * len(key) + 32 + 44)) for key, e in order], hub_px)
         for key, e in ends.items():
-            if offs.get(key) is not None:
+            if offs.get(key) is not None and self.fmt != "guess":   # the guess keeps cities hidden
                 e["label"] = self._make_label(cv, key, e["color"])
                 e["off"] = offs[key]
 
@@ -549,10 +564,16 @@ class Reel:
                 shown = min(total, landed + max(0, total - len(routes)) * (1 if t >= run1 + 0.4 else 0))
                 clock_ts = t_lo + (min(max(t, run0), run1) - run0) / k
             self._set_count(cv, hud, shown)
-            hud["clock"].set_text(datetime.fromtimestamp(clock_ts, self.cfg.tz).strftime("%I:%M %p").lstrip("0") if moves else "--")
+            hud["clock"].set_text(self._clock(clock_ts) if moves else "--")
             fade.set_alpha(0 if first_scene else max(0.0, 1 - t / 0.3))
             write(cv.frame())
         cv.close()
+
+    def _clock(self, ts):
+        t = datetime.fromtimestamp(ts, self.cfg.tz)
+        if self.fmt == "lincoln":   # three days: "SAT 1 PM"
+            return f"{t.strftime('%a').upper()} {(t.hour % 12) or 12} {'AM' if t.hour < 12 else 'PM'}"
+        return t.strftime("%I:%M %p").lstrip("0")
 
     def _legend(self, cv):
         items = [("Airline", BIRD), ("Private jet", ORANGE), ("Props + other", NAVY)]
@@ -649,11 +670,34 @@ class Reel:
             cv.close()
 
     def _stats_kicker(self):
+        if self.fmt:
+            return self.spec["kicker"]
         return {"commercial": "EPPLEY · OMA", "private": "PRIVATE JETS · METRO", "military": "OFFUTT · OFF",
                 "all": "ALL AIRPORTS · METRO"}[self.slot]
 
     def _stats_content(self):
         s = self.s
+        if self.fmt == "wrap":
+            tiles = [(s.get("week_airline", 0), "AIRLINE FLIGHTS · EPPLEY", NAVY), (s.get("week_private", 0), "PRIVATE JETS", ORANGE),
+                     (s.get("week_military", 0), "OFFUTT · AT LEAST", NAVY), (s.get("week_total", 0), "ALL FLIGHTS", NAVY)]
+            facts = []
+            if s.get("busiest_day"):
+                facts.append(("BUSIEST DAY", f"{s['busiest_day']} · {s['busiest_day_count']:,}"))
+            if s.get("per_day"):
+                facts.append(("A TYPICAL DAY", f"{s['per_day']:,} flights"))
+            return tiles, s.get("top_destinations", [])[:5], facts
+        if self.fmt == "lincoln":
+            pct = s.get("change_pct")
+            tiles = [(s["arrivals"], "PRIVATE JETS IN", ORANGE), (s.get("normal", 0), "A NORMAL WEEKEND", NAVY),
+                     (f"{'+' if (pct or 0) >= 0 else ''}{pct}%" if pct is not None else "–", "VS NORMAL", ORANGE),
+                     (s.get("cities_linked", 0), "CITIES", NAVY)]
+            facts = [("THU · FRI · SAT", " · ".join(str(d["count"]) for d in s.get("by_day", [])))]
+            if s.get("farthest"):
+                facts.append(("FARTHEST", f"{s['farthest']['code']} · {s['farthest']['miles']:,} mi"))
+            if s.get("top_types"):
+                facts.append(("TOP TYPE", f"{s['top_types'][0]['name']} · {s['top_types'][0]['count']}"))
+            facts.append(("COUNTED UNTIL", f"Sat {s.get('cutoff', '7 PM')}"))
+            return tiles, s.get("top_origins", [])[:5], facts[:4]
         if self.slot == "military":
             week_total = sum(d["count"] or 0 for d in self.week)
             tiles = [(s["flights"], "MOVEMENTS · AT LEAST", NAVY), (s["departures"], "DEPARTURES", NAVY),
@@ -688,7 +732,8 @@ class Reel:
     def _city_rows(self, cv, rows, t):
         if not rows:
             return
-        cv.spaced(62, 1010, "TOP CITIES", 16, MUTED, cv.f.mono6, spacing=2.4, z=12)
+        label = {"lincoln": "WHERE THEY FLEW IN FROM", "wrap": "TOP CITIES · EPPLEY, ALL WEEK"}.get(self.fmt, "TOP CITIES")
+        cv.spaced(62, 1010, label, 16, MUTED, cv.f.mono6, spacing=2.4, z=12)
         mx = max(r["count"] for r in rows)
         for i, r in enumerate(rows):
             y = 1035 + i * 56
@@ -771,6 +816,124 @@ class Reel:
             write(cv.frame())
             cv.close()
 
+    # ---- new formats ----
+    def _board(self, t, kicker, l1, l2):
+        """Cloud background, skyline band + badge, kicker and a two-line headline."""
+        cv = Canvas(self.f)
+        cv.fig.set_facecolor(CLOUD)
+        cv.map.set_facecolor(CLOUD)
+        self._band(cv)
+        cv.spaced(62, 440, f"{kicker} · {self.date_label}", 21, BIRD, cv.f.mono, spacing=3.2, z=12)
+        cv.text(58, 520, l1, 80, NAVY, cv.f.head, z=12)
+        cv.text(58, 604, l2, 80, BIRD, cv.f.head, z=12)
+        return cv
+
+    def _finish(self, cv, t, write):
+        self._sample_stamp(cv)
+        f = self._fade(cv)
+        f.set_alpha(max(0.0, 1 - t / 0.3))
+        write(cv.frame())
+        cv.close()
+
+    def guess_scene(self, write, secs: float = 6.5):
+        """Three answer cards, a 3-2-1 countdown, then the answer lights up."""
+        g = self.s.get("guess") or {}
+        choices, answer = g.get("choices") or [], g.get("answer")
+        reveal = 4.3
+        for fi in range(int(secs * FPS)):
+            t = fi / FPS
+            cv = self._board(t, "GUESS FIRST", "Where did Eppley", "fly most?")
+            for i, city in enumerate(choices):
+                y = 700 + i * 200
+                s = pop((t - 0.2 - i * 0.15) / 0.4)
+                if s <= 0:
+                    continue
+                right = t >= reveal and city == answer
+                dim = 0.35 if t >= reveal and city != answer else 1.0
+                a = min(1, s) * dim
+                cv.rbox(62, y, 956, 170, 30, ORANGE if right else WHITE, z=10, alpha=a, shadow=not right)
+                cv.ui.add_patch(cv.P.Circle((150, y + 85), 52, fc=WHITE if right else NAVY, ec="none", zorder=11, alpha=a))
+                cv.text(150, y + 105, "ABC"[i], 56, ORANGE if right else WHITE, cv.f.head, ha="center", z=12, alpha=a)
+                cv.text(232, y + 108, city, 64 if len(city) < 16 else 48, WHITE if right else NAVY, cv.f.head, z=12, alpha=a)
+                if right:
+                    cv.text(990, y + 104, f"×{g.get('answer_count', '')}", 52, WHITE, cv.f.mono, ha="right", z=12)
+            if t < reveal:
+                n = 3 - int(max(0.0, t - 1.0) // 1.1)
+                if t >= 1.0 and n >= 1:
+                    cv.ui.add_patch(cv.P.Circle((W / 2, 1450), 95, fc=NAVY, ec="none", zorder=11))
+                    cv.text(W / 2, 1490, str(n), 110, WHITE, cv.f.head, ha="center", z=12)
+                cv.text(W / 2, 1640, "Comment your guess", 44, INK, cv.f.head, ha="center", z=12, alpha=min(1, t / 0.6))
+            else:
+                a = min(1, (t - reveal) / 0.4)
+                cv.text(W / 2, 1480, f"{answer}.", 84, ORANGE, cv.f.head, ha="center", z=12, alpha=a)
+                cv.text(W / 2, 1560, f"{g.get('answer_count', '')} departures to {answer} that day.", 34, INK, cv.f.body,
+                        ha="center", z=12, alpha=a)
+            self._finish(cv, t, write)
+
+    def scoreboard_scene(self, write, secs: float = 8.5):
+        """Four fields count up side by side like a departures board; the busiest wins."""
+        sb = self.s.get("scoreboard") or {}
+        rows = sb.get("rows", [])
+        top = max((r["count"] for r in rows), default=0)
+        names = {"OFF": "Offutt · at least"}
+        done = 4.0
+        for fi in range(int(secs * FPS)):
+            t = fi / FPS
+            cv = self._board(t, "METRO SCOREBOARD", "Metro", "scoreboard.")
+            for i, r in enumerate(rows):
+                y = 680 + i * 175
+                s = pop((t - 0.2 - i * 0.12) / 0.4)
+                if s <= 0:
+                    continue
+                win = t >= done and r["count"] == top
+                cv.rbox(62, y, 956, 155, 26, NAVY if win else WHITE, z=10, alpha=min(1, s), shadow=not win)
+                cv.spaced(96, y + 58, r["code"], 26, ORANGE if win else BIRD, cv.f.mono, spacing=3, z=12)
+                cv.text(96, y + 118, names.get(r["code"], r["name"]), 44, WHITE if win else NAVY, cv.f.head, z=12)
+                n = int(round(r["count"] * ease((t - 0.6 - i * 0.15) / 3.0)))
+                cv.text(990, y + 112, f"{n:,}", 96, ORANGE if win else NAVY, cv.f.head, ha="right", z=12)
+                if t >= done + 0.3 and sb.get("total"):
+                    cv.text(640, y + 118, f"{round(100 * r['count'] / sb['total'])}%", 30,
+                            MINT if win else MUTED, cv.f.mono, ha="right", z=12, alpha=min(1, (t - done - 0.3) / 0.4))
+            if t >= done + 0.6:
+                a = min(1, (t - done - 0.6) / 0.4)
+                cv.text(62, 1450, f"{sb.get('total', 0):,} takeoffs and landings across the metro", 36, INK, cv.f.body, z=12, alpha=a)
+                if sb.get("vs_last_week") is not None:
+                    v = sb["vs_last_week"]
+                    cv.text(62, 1510, f"{'+' if v >= 0 else ''}{v}% vs the same day last week", 34, BIRD, cv.f.body, z=12, alpha=a)
+            self._finish(cv, t, write)
+
+    def week_scene(self, write, secs: float = 7.0):
+        """Seven bars, one per day; the busiest day turns orange."""
+        days = self.s.get("days", [])
+        vals = [d.get("total") for d in days]
+        mx = max([v or 0 for v in vals] or [1]) or 1
+        busiest = max(range(len(days)), key=lambda i: vals[i] or 0) if days else -1
+        for fi in range(int(secs * FPS)):
+            t = fi / FPS
+            cv = self._board(t, "THE WEEK", "Omaha's week", "in the sky.")
+            base, top = 1330, 760
+            for i, d in enumerate(days):
+                x = 62 + i * 138
+                g = ease((t - 0.4 - i * 0.15) / 0.9)
+                v = vals[i]
+                cv.rbox(x, top, 118, base - top, 16, ICE, z=9)
+                h = (base - top - 10) * ((v or 0) / mx) * g
+                hot = i == busiest and t >= 2.2
+                if v is not None and h > 2:
+                    cv.rbox(x, base - h, 118, h, 16, ORANGE if hot else BIRD, z=10)
+                cv.text(x + 59, base + 46, d["label"], 26, NAVY if hot else MUTED, cv.f.mono, ha="center", z=12)
+                cv.text(x + 59, base - h - 18, "–" if v is None else f"{int(round(v * g)):,}", 28, NAVY, cv.f.mono,
+                        ha="center", z=12, alpha=min(1, g * 2))
+            if t >= 2.4:
+                a = min(1, (t - 2.4) / 0.4)
+                s = self.s
+                cv.text(62, 1490, f"{s.get('week_total', 0):,} takeoffs and landings", 46, NAVY, cv.f.head, z=12, alpha=a)
+                if s.get("busiest_day"):
+                    cv.text(62, 1550, f"Busiest: {s['busiest_day']}, {s['busiest_day_count']:,}", 34, INK, cv.f.body, z=12, alpha=a)
+                if s.get("days_missing"):
+                    cv.text(62, 1600, f"{s['days_missing']} day(s) without data", 26, MUTED, cv.f.body, z=12, alpha=a)
+            self._finish(cv, t, write)
+
     # ---- whole reel ----
     def render(self, out: Path):
         import imageio_ffmpeg
@@ -779,12 +942,26 @@ class Reel:
                                         output_params=["-crf", "20", "-preset", "veryfast", "-movflags", "+faststart"],
                                         macro_block_size=1)
         w.send(None)
-        if self.slot == "military":
+        if self.fmt == "guess":
+            self.map_scene("dep", w.send, first_scene=True)
+            self.guess_scene(w.send)
+            self.stats_scene(w.send)
+        elif self.fmt == "scoreboard":
+            self.map_scene("dep", w.send, first_scene=True, secs=7.0)
+            self.scoreboard_scene(w.send)
+        elif self.fmt == "wrap":
+            self.week_scene(w.send)
+            self.stats_scene(w.send)
+        elif self.fmt == "lincoln":
+            self.map_scene("arr", w.send, first_scene=True, secs=9.0)
+            self.stats_scene(w.send, secs=7.0)
+        elif self.slot == "military":
             self.military_scene(w.send)
+            self.stats_scene(w.send)
         else:
             self.map_scene("dep", w.send, first_scene=True)
             self.map_scene("arr", w.send)
-        self.stats_scene(w.send)
+            self.stats_scene(w.send)
         self.end_scene(w.send)
         w.close()
         tmp.replace(out)
@@ -865,7 +1042,15 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         from_opensky = fl.eppley_arrivals(cfg, raw)
         fl.fix_airline_fields(cfg, raw)
         after_fix = fl.eppley_arrivals(cfg, raw)
-        raw += fl.infer_arrivals(cfg, raw, flight_day, session)
+        lists = fl._lists(cfg)
+        deps = sum(1 for f in raw if f.get("estDepartureAirport") == fl.HUB != f.get("estArrivalAirport")
+                   and fl.classify(f, *lists) == "commercial")
+        if deps and after_fix >= 0.95 * deps:
+            # OpenSky's own arrival list is already complete (normal now that the posts show
+            # two days back): skip the fill-in, which would cost ~120 requests for nothing.
+            log(cfg, f"Eppley arrivals look complete ({after_fix} vs {deps} departures); no fill-in needed")
+        else:
+            raw += fl.infer_arrivals(cfg, raw, flight_day, session)
         breakdown = {"from_opensky": from_opensky, "moved_from_council_bluffs": after_fix - from_opensky,
                      "filled_in": fl.eppley_arrivals(cfg, raw) - after_fix}
         breakdown["total"] = sum(breakdown.values())
@@ -873,7 +1058,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         master.parent.mkdir(parents=True, exist_ok=True)
         master.write_text(json.dumps({"flights": raw, "eppley_arrivals": breakdown,
                                       "fetched_at": int(time.time())}), encoding="utf-8")
-        for old in sorted(master.parent.glob("*.json"))[:-10]:   # keep the last 10 days
+        for old in sorted(master.parent.glob("*.json"))[:-45]:   # keep 45 days (weekly + holiday formats)
             old.unlink(missing_ok=True)
     _save_flight_list(cfg, post_date, flight_day, raw)
     day = fl.build_day(cfg, raw, info)
@@ -890,6 +1075,36 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         for d in week[:-1]:
             d["count"] = d["count"] if d["count"] is not None else rnd.randint(4, 14)
     stats["posts"]["military"]["week"] = week
+    # New formats taking a post's place today (skybird/formats.py), and the Sunday wrap
+    from . import formats
+    formats.record_fields(cfg, flight_day, stats["posts"]["all"].get("airports") or [])
+    wanted = [k for k in (slots or list(FILES)) if k != "wrap" or cfg.slot_active("wrap", post_date)]
+    fmts, fposts = {}, {}
+    for slot in wanted:
+        fmt = formats.format_for(cfg, post_date, slot) if slot in (sl.key for sl in cfg.slots) else None
+        if not fmt:
+            continue
+        try:
+            if fmt == "guess":
+                post = dict(day["posts"][slot])
+                post["stats"] = dict(post["stats"], guess=formats.guess_choices(post, flight_day))
+            elif fmt == "scoreboard":
+                post = dict(day["posts"]["all"])
+                post["stats"] = dict(post["stats"], scoreboard=formats.scoreboard(cfg, flight_day, post["stats"]))
+            elif fmt == "wrap":
+                post = {"moves": [], "stats": formats.week(cfg, flight_day, day)}
+            elif fmt == "lincoln":
+                post = formats.lincoln(cfg, post_date, session=None if demo else session, demo=demo)
+            else:
+                continue
+        except Exception as e:   # the regular post goes out instead
+            log(cfg, f"  {formats.title(fmt)} couldn't be made ({e}); the regular {slot} post is used instead")
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(f"::warning title=New format::{formats.title(fmt)} couldn't be made ({str(e)[:300]}); "
+                      f"the regular post goes out instead")
+            continue
+        fmts[slot], fposts[slot] = fmt, post
+        stats["posts"][slot] = dict(post["stats"], format=fmt)
     cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     if not day["complete"]:
         log(cfg, "Heads up: " + day["why"])
@@ -899,8 +1114,11 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     fonts = Fonts()
     # Made in this order: All planes first (the full picture), then Eppley, private, military.
-    order = ["all", "commercial", "private", "military"]
-    for slot in [k for k in order if k in (slots or list(FILES))]:
-        Reel(cfg, slot, flight_day, day["posts"][slot], fonts, demo, week=week).render(cfg.media_file(post_date, FILES[slot]))
-        log(cfg, f"  rendered {cfg.media_file(post_date, FILES[slot]).name} ({day['posts'][slot]['stats']['flights']} movements)")
+    order = ["all", "commercial", "private", "military", "wrap"]
+    for slot in [k for k in order if k in wanted and (k in fposts or k in day["posts"])]:
+        post, fmt = fposts.get(slot) or day["posts"][slot], fmts.get(slot)
+        shown = date.fromisoformat(post["stats"]["game_day"]) if fmt == "lincoln" else flight_day
+        Reel(cfg, slot, shown, post, fonts, demo, week=week, fmt=fmt).render(cfg.media_file(post_date, FILES[slot]))
+        log(cfg, f"  rendered {cfg.media_file(post_date, FILES[slot]).name}"
+                 f"{' as ' + formats.title(fmt) if fmt else ''} ({post['stats']['flights']} movements)")
     return folder

@@ -70,7 +70,8 @@ def day_schedule(cfg: Config, post_date: date) -> dict:
     4 weeks, and which slots run rotates too (so no time of day is favored). About half
     of the posts that run are new concepts (1 → 0 or 1, 2 → 1, 3 → 1 or 2, 4 → 2).
     Otherwise all 4 post and `per_day` of them are concepts.
-    Fixed dates under [formats] always run and count as concepts. Each slot takes the
+    Fixed dates under [formats] always run and count as concepts; [posts_on] picks which
+    posts go out on a date instead of the rotation. Each slot takes the
     concept that has run least so far (worked out day by day from the test's start)."""
     t = cfg.section("testing")
     try:
@@ -95,6 +96,9 @@ def day_schedule(cfg: Config, post_date: date) -> dict:
         order = [ALL_SLOTS[(k + i) % len(ALL_SLOTS)] for i in range(len(ALL_SLOTS))]
         running = list(fixed) + [x for x in order if x not in fixed]
         running = running[:max(level, len(fixed))]
+        swap = [x for x in (cfg.section("posts_on").get(d.isoformat()) or []) if x in ALL_SLOTS]
+        if swap:   # you picked which posts go out that day (the count stays the same)
+            running = list(fixed) + [x for x in swap if x not in fixed]
         plan = dict(fixed)
         for slot in running:
             if len(plan) >= max(new, len(fixed)):

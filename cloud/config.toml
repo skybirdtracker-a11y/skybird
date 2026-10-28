@@ -111,6 +111,11 @@ volume = true
 "2026-11-01" = { commercial = "lincoln" }
 "2026-11-22" = { commercial = "lincoln" }
 
+# Pick which posts go out on a date (instead of the rotation's choice). Keys: commercial,
+# private, military, all.
+[posts_on]
+"2026-10-30" = ["private"]    # 1-post day: private jets instead of Offutt
+
 # ---- How posts get published ----------------------------------------------
 [publisher]
 # "buffer"      = through buffer.com's FREE plan (3 channels = IG + FB + TikTok). No developer

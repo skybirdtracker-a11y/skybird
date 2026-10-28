@@ -39,6 +39,7 @@ def test_volume_test_balanced_levels_and_half_new(cfg):
     # every weekday gets 1, 2, 3 and 4 posts once in 4 weeks
     assert len(levels) == 28 and set(levels.values()) == {1}
     assert formats.day_schedule(cfg, date(2026, 11, 1))["formats"]["commercial"] == "lincoln"   # fixed date runs
+    assert formats.day_schedule(cfg, date(2026, 10, 30))["running"] == ["private"]            # [posts_on] pick
     assert formats.day_schedule(cfg, date(2026, 10, 27)) == {"level": 4, "running": formats.ALL_SLOTS, "formats": {}}
     assert all(seen[f] >= 2 for f in ("guess", "farthest", "firstlast", "scoreboard", "hours", "types"))
 
@@ -46,6 +47,7 @@ def test_volume_test_balanced_levels_and_half_new(cfg):
 def test_without_volume_test_all_four_post_with_two_concepts(cfg):
     from datetime import timedelta
     cfg.raw["testing"]["volume"] = False
+    cfg.raw.pop("posts_on", None)
     for i in range(14):
         d = date(2026, 10, 28) + timedelta(days=i)
         sc = formats.day_schedule(cfg, d)

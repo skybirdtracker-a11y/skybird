@@ -55,6 +55,13 @@ FORMAT_SPECS = {
               "dep": ("Where did Eppley", "fly most?"), "stats": ("Eppley, by the", "numbers."),
               "colors": {"dep": BIRD, "arr": ORANGE}},
     "scoreboard": dict(POSTS["all"], kicker="METRO SCOREBOARD"),
+    "farthest": dict(POSTS["commercial"], kicker="FARTHEST FLIGHT · EPPLEY"),
+    "firstlast": dict(POSTS["commercial"], kicker="FIRST UP, LAST DOWN · EPPLEY"),
+    "hours": dict(POSTS["all"], kicker="BUSIEST HOURS · METRO"),
+    "types": dict(POSTS["private"], kicker="WHICH JETS · METRO"),
+    "weekend": {"kicker": "PRIVATE JETS · WEEKEND", "fields": ["KOMA", "KMLE", "KCBF"],
+                "arr": ("Who flew in for", "the weekend?"), "stats": ("The weekend,", "by the numbers."),
+                "colors": {"arr": ORANGE}},
     "wrap": {"kicker": "THE WEEK · METRO", "fields": ["KOMA"], "stats": ("Omaha's week,", "by the numbers.")},
     "lincoln": {"kicker": "GAME WEEKEND · LINCOLN", "fields": ["KLNK"],
                 "arr": ("Who flew in for", "the Huskers?"), "stats": ("Game weekend,", "by the numbers."),
@@ -272,6 +279,8 @@ class Reel:
         self.date_label = f"{day.strftime('%a').upper()} · {day.strftime('%b').upper()} {day.day}"
         if fmt == "wrap":
             self.date_label = self.s.get("range", "").upper()
+        if fmt == "weekend":
+            self.date_label = f"SAT–SUN · {self.s.get('weekend', '').upper()}"
         self.fields = [fl.place(i) for i in self.spec["fields"]]
         hub = self.fields[0]
         self.hub_icao = self.spec["fields"][0]
@@ -571,7 +580,7 @@ class Reel:
 
     def _clock(self, ts):
         t = datetime.fromtimestamp(ts, self.cfg.tz)
-        if self.fmt == "lincoln":   # three days: "SAT 1 PM"
+        if self.fmt in ("lincoln", "weekend"):   # several days: "SAT 1 PM"
             return f"{t.strftime('%a').upper()} {(t.hour % 12) or 12} {'AM' if t.hour < 12 else 'PM'}"
         return t.strftime("%I:%M %p").lstrip("0")
 
@@ -686,6 +695,16 @@ class Reel:
             if s.get("per_day"):
                 facts.append(("A TYPICAL DAY", f"{s['per_day']:,} flights"))
             return tiles, s.get("top_destinations", [])[:5], facts
+        if self.fmt == "weekend":
+            bd = {d["label"]: d["count"] for d in s.get("by_day", [])}
+            tiles = [(s["arrivals"], "PRIVATE JETS IN", ORANGE), (s.get("cities_linked", 0), "CITIES", NAVY),
+                     (bd.get("SAT", 0), "SATURDAY", NAVY), (bd.get("SUN", 0), "SUNDAY", NAVY)]
+            facts = []
+            if s.get("farthest"):
+                facts.append(("FARTHEST", f"{s['farthest']['code']} · {s['farthest']['miles']:,} mi"))
+            if s.get("top_types"):
+                facts.append(("TOP TYPE", f"{s['top_types'][0]['name']} · {s['top_types'][0]['count']}"))
+            return tiles, s.get("top_origins", [])[:5], facts
         if self.fmt == "lincoln":
             pct = s.get("change_pct")
             tiles = [(s["arrivals"], "PRIVATE JETS IN", ORANGE), (s.get("normal", 0), "A NORMAL WEEKEND", NAVY),
@@ -732,7 +751,7 @@ class Reel:
     def _city_rows(self, cv, rows, t):
         if not rows:
             return
-        label = {"lincoln": "WHERE THEY FLEW IN FROM", "wrap": "TOP CITIES · EPPLEY, ALL WEEK"}.get(self.fmt, "TOP CITIES")
+        label = {"lincoln": "WHERE THEY FLEW IN FROM", "weekend": "WHERE THEY FLEW IN FROM", "wrap": "TOP CITIES · EPPLEY, ALL WEEK"}.get(self.fmt, "TOP CITIES")
         cv.spaced(62, 1010, label, 16, MUTED, cv.f.mono6, spacing=2.4, z=12)
         mx = max(r["count"] for r in rows)
         for i, r in enumerate(rows):
@@ -934,6 +953,106 @@ class Reel:
                     cv.text(62, 1600, f"{s['days_missing']} day(s) without data", 26, MUTED, cv.f.body, z=12, alpha=a)
             self._finish(cv, t, write)
 
+    def farthest_scene(self, write, secs: float = 7.0):
+        top = (self.s.get("farthest_list") or {}).get("list") or []
+        if not top:
+            return
+        f = top[0]
+        for fi in range(int(secs * FPS)):
+            t = fi / FPS
+            cv = self._board(t, "FARTHEST FLIGHT", "The farthest", "flight.")
+            s = pop((t - 0.2) / 0.45)
+            if s > 0:
+                a = min(1, s)
+                cv.rbox(62, 680, 956, 430, 34, NAVY, z=10, alpha=a)
+                cv.spaced(110, 760, f"OMA TO {f['code']}", 26, MINT, cv.f.mono, spacing=3, z=12, alpha=a)
+                cv.text(106, 870, f["city"], 92 if len(f["city"]) < 14 else 64, WHITE, cv.f.head, z=12, alpha=a)
+                mi = int(round(f["miles"] * ease((t - 0.5) / 2.0)))
+                cv.text(106, 1010, f"{mi:,} mi", 110, ORANGE, cv.f.head, z=12, alpha=a)
+                sub = " · ".join(x for x in [f.get("airline"), f"about {f['hours']:g} h in the air" if f.get("hours") else ""] if x)
+                if sub:
+                    cv.text(110, 1075, sub, 32, WHITE, cv.f.body, z=12, alpha=a)
+            for i, r in enumerate(top[1:3]):
+                y = 1160 + i * 140
+                g = pop((t - 2.6 - i * 0.2) / 0.4)
+                if g <= 0:
+                    continue
+                cv.rbox(62, y, 956, 120, 24, WHITE, z=10, alpha=min(1, g), shadow=True)
+                cv.text(100, y + 78, str(i + 2), 52, BIRD, cv.f.head, z=12, alpha=min(1, g))
+                cv.text(170, y + 78, r["city"], 48, NAVY, cv.f.head, z=12, alpha=min(1, g))
+                cv.text(990, y + 76, f"{r['miles']:,} mi", 40, NAVY, cv.f.mono, ha="right", z=12, alpha=min(1, g))
+            self._finish(cv, t, write)
+
+    def firstlast_scene(self, write, secs: float = 7.5):
+        d = self.s.get("first_last") or {}
+        a, b = d.get("first") or {}, d.get("last") or {}
+        for fi in range(int(secs * FPS)):
+            t = fi / FPS
+            cv = self._board(t, "EPPLEY", "First up,", "last down.")
+            for i, (row, kick, word, fc, tc, kc) in enumerate(((a, "FIRST UP", "to", WHITE, NAVY, BIRD),
+                                                                (b, "LAST DOWN", "from", NAVY, WHITE, MINT))):
+                y = 690 + i * 360
+                g = pop((t - 0.3 - i * 1.6) / 0.45)
+                if g <= 0:
+                    continue
+                al = min(1, g)
+                cv.rbox(62, y, 956, 320, 32, fc, z=10, alpha=al, shadow=fc == WHITE)
+                cv.spaced(106, y + 70, kick, 26, kc, cv.f.mono, spacing=3, z=12, alpha=al)
+                cv.text(102, y + 185, row.get("time", ""), 104, ORANGE if i == 0 else WHITE, cv.f.head, z=12, alpha=al)
+                cv.text(106, y + 262, f"{row.get('airline', '')} {word} {row.get('city', '')}", 42, tc, cv.f.head, z=12, alpha=al)
+            if t >= 3.8:
+                al = min(1, (t - 3.8) / 0.4)
+                cv.text(62, 1490, f"{d.get('between', 0):,} airline flights in between.", 44, NAVY, cv.f.head, z=12, alpha=al)
+            self._finish(cv, t, write)
+
+    def hours_scene(self, write, secs: float = 7.5):
+        h = self.s.get("hours") or {}
+        rows = h.get("rows", [])
+        mx = max([r["count"] for r in rows] or [1]) or 1
+        peak = max(range(len(rows)), key=lambda i: rows[i]["count"]) if rows else -1
+        for fi in range(int(secs * FPS)):
+            t = fi / FPS
+            cv = self._board(t, "BUSIEST HOURS", "Omaha's busiest", "hours.")
+            base, top, step = 1300, 720, 956 / max(len(rows), 1)
+            for i, r in enumerate(rows):
+                x = 62 + i * step
+                g = ease((t - 0.3 - i * 0.05) / 0.8)
+                hgt = (base - top) * r["count"] / mx * g
+                hot = i == peak and t >= 2.2
+                cv.rbox(x + 2, top, step - 6, base - top, 6, ICE, z=9)
+                if hgt > 2:
+                    cv.rbox(x + 2, base - hgt, step - 6, hgt, 6, ORANGE if hot else BIRD, z=10)
+                if i % 3 == 0:
+                    cv.text(x + step / 2, base + 40, r["label"], 22, MUTED, cv.f.mono6, ha="center", z=12)
+                if hot:
+                    cv.text(x + step / 2, base - hgt - 16, str(r["count"]), 30, ORANGE, cv.f.mono, ha="center", z=12)
+            if t >= 2.4:
+                al = min(1, (t - 2.4) / 0.4)
+                cv.text(62, 1450, f"Peak: {h.get('peak')} · {h.get('peak_count')} takeoffs and landings", 40, NAVY, cv.f.head, z=12, alpha=al)
+                cv.text(62, 1510, f"Quietest daytime hour: {h.get('quiet')} · {h.get('quiet_count')}", 34, INK, cv.f.body, z=12, alpha=al)
+            self._finish(cv, t, write)
+
+    def types_scene(self, write, secs: float = 7.0):
+        rows = (self.s.get("types") or {}).get("list") or []
+        mx = max([r["count"] for r in rows] or [1]) or 1
+        for fi in range(int(secs * FPS)):
+            t = fi / FPS
+            cv = self._board(t, "PRIVATE JETS", "Which jets fly", "Omaha?")
+            for i, r in enumerate(rows):
+                y = 690 + i * 132
+                g = ease((t - 0.3 - i * 0.15) / 0.8)
+                if g <= 0:
+                    continue
+                w = max(440, 956 * r["count"] / mx) * g
+                cv.rbox(62, y, w, 110, 22, ORANGE if i == 0 else WHITE, z=10, shadow=i != 0)
+                cv.text(96, y + 72, r["name"], 44, WHITE if i == 0 else NAVY, cv.f.head, z=12, alpha=min(1, g * 2))
+                cv.text(1000, y + 72, str(r["count"]), 44, ORANGE if i else NAVY, cv.f.mono, ha="right", z=12, alpha=min(1, g * 2))
+            if t >= 2.6 and rows:
+                al = min(1, (t - 2.6) / 0.4)
+                cv.text(62, 1450, f"Most common: {rows[0]['name']}.", 52, NAVY, cv.f.head, z=12, alpha=al)
+                cv.text(62, 1510, "Takeoffs and landings, by aircraft type.", 28, MUTED, cv.f.body, z=12, alpha=al)
+            self._finish(cv, t, write)
+
     # ---- whole reel ----
     def render(self, out: Path):
         import imageio_ffmpeg
@@ -952,9 +1071,12 @@ class Reel:
         elif self.fmt == "wrap":
             self.week_scene(w.send)
             self.stats_scene(w.send)
-        elif self.fmt == "lincoln":
+        elif self.fmt in ("lincoln", "weekend"):
             self.map_scene("arr", w.send, first_scene=True, secs=9.0)
             self.stats_scene(w.send, secs=7.0)
+        elif self.fmt in ("farthest", "firstlast", "hours", "types"):
+            self.map_scene("dep", w.send, first_scene=True, secs=7.0 if self.fmt == "hours" else 7.5)
+            getattr(self, f"{self.fmt}_scene")(w.send)
         elif self.slot == "military":
             self.military_scene(w.send)
             self.stats_scene(w.send)
@@ -1088,6 +1210,15 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
             if fmt == "guess":
                 post = dict(day["posts"][slot])
                 post["stats"] = dict(post["stats"], guess=formats.guess_choices(post, flight_day))
+            elif fmt in ("farthest", "firstlast", "hours", "types"):
+                post = dict(day["posts"][slot])
+                extra = {"farthest": lambda: {"farthest_list": formats.farthest(post)},
+                         "firstlast": lambda: {"first_last": formats.first_last(cfg, post)},
+                         "hours": lambda: {"hours": formats.hours(cfg, post)},
+                         "types": lambda: {"types": formats.types(post)}}[fmt]()
+                post["stats"] = dict(post["stats"], **extra)
+            elif fmt == "weekend":
+                post = formats.weekend(cfg, flight_day, day)
             elif fmt == "scoreboard":
                 post = dict(day["posts"]["all"])
                 post["stats"] = dict(post["stats"], scoreboard=formats.scoreboard(cfg, flight_day, post["stats"]))
@@ -1118,7 +1249,20 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     for slot in [k for k in order if k in wanted and (k in fposts or k in day["posts"])]:
         post, fmt = fposts.get(slot) or day["posts"][slot], fmts.get(slot)
         shown = date.fromisoformat(post["stats"]["game_day"]) if fmt == "lincoln" else flight_day
-        Reel(cfg, slot, shown, post, fonts, demo, week=week, fmt=fmt).render(cfg.media_file(post_date, FILES[slot]))
+        try:
+            Reel(cfg, slot, shown, post, fonts, demo, week=week, fmt=fmt).render(cfg.media_file(post_date, FILES[slot]))
+        except Exception as e:
+            if not fmt or slot not in day["posts"]:
+                raise
+            # a new concept failed to render: the regular post goes out instead
+            log(cfg, f"  {formats.title(fmt)} failed to render ({e}); making the regular {slot} post instead")
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(f"::warning title=New format::{formats.title(fmt)} failed to render ({str(e)[:300]}); "
+                      "the regular post goes out instead")
+            post, fmt = day["posts"][slot], None
+            stats["posts"][slot] = post["stats"]
+            cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
+            Reel(cfg, slot, flight_day, post, fonts, demo, week=week).render(cfg.media_file(post_date, FILES[slot]))
         log(cfg, f"  rendered {cfg.media_file(post_date, FILES[slot]).name}"
                  f"{' as ' + formats.title(fmt) if fmt else ''} ({post['stats']['flights']} movements)")
     return folder

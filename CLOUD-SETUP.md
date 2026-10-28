@@ -74,17 +74,20 @@ A red ✕? Click it, then the failed step; the last lines say what's wrong (usua
 - In the cloud, every post uses the day's default caption style (it rotates, so the caption tests keep running) and the pre-checked @tags. There's no approval step: Buffer's queue is your approval.
 - Engagement charts, best-time testing and phone approvals live in the PC dashboard, which keeps working whenever the PC is on (with Auto-posting off it just shows things).
 
-## New post formats (the 4-week test)
+## New post concepts (the test)
 
-On chosen days a new format takes a regular post's place. The dates live in
-`cloud/config.toml` under `[formats]` (edit them on GitHub; delete a line to skip a test):
+Every day 2 of the regular posts are swapped for new concepts (`[testing]` in
+`cloud/config.toml`). Which post sits out rotates daily, and each post takes the concept
+that has run least so far. Military always stays regular (counts only).
 
-| Format | Key | Replaces |
-|---|---|---|
-| #01 Guess the destination | `guess` | 9 AM Eppley post |
-| #10 Metro scoreboard | `scoreboard` | 6 PM all-airports post |
-| Lincoln game-weekend private jets | `lincoln` | 9 AM post, the Sunday after a Husker home game |
-| #07 Sunday weekly wrap | (its own post) | extra 10 AM post every Sunday (`[slots.wrap]`) |
+| Post | Concepts it rotates through |
+|---|---|
+| 9 AM Eppley | #01 Guess the destination, #02 Farthest flight, #03 First up, last down |
+| 11 AM Private jets | #30 Which jets fly Omaha, #14 Weekend arrivals (Tuesdays) |
+| 6 PM All airports | #10 Metro scoreboard, #06 Busiest hours |
+| extra 10 AM Sunday | #07 Sunday weekly wrap (`[slots.wrap]`) |
 
-If a format can't be made on its day, the regular post goes out instead and the run
-shows a "New format" warning. The weekly report compares each format with the post it replaced.
+Fixed dates under `[formats]` win over the rotation (the Lincoln game-weekend post on the
+Sunday after a Husker home game). Set `enabled = false` under `[testing]` to stop the test.
+If a concept can't be made on its day, the regular post goes out instead and the run shows a
+"New format" warning. The weekly report compares each concept with the regular posts.

@@ -86,17 +86,24 @@ file = "post5_wrap.mp4"
 platforms = ["instagram", "facebook", "tiktok"]
 days = ["sun"]
 
-# ---- New formats (the 4-week test) ------------------------------------------
-# On these dates a new format takes that post's place. Keys: commercial (9 AM),
-# private (11 AM), military (1 PM), all (6 PM). Formats: guess (#01 Guess the
-# destination), scoreboard (#10 Metro scoreboard), lincoln (private jets into Lincoln
-# for a Husker home game; post it the Sunday after). If a format can't be made, the
-# regular post goes out instead. Delete a line to skip that test.
+# ---- New concepts (the test) ------------------------------------------------
+# Every day 2 of the regular posts are swapped for new concepts. Which post sits out
+# rotates daily, and each post takes the concept that has run least so far, so every
+# concept gets a fair number of tries. Military always stays regular (counts only).
+# Turn the test off with enabled = false. Concepts per post:
+#   commercial (9 AM): guess (#01), farthest (#02), firstlast (#03)
+#   private (11 AM):   types (#30), weekend (#14, Tuesdays only)
+#   all (6 PM):        scoreboard (#10), hours (#06)
+# If a concept can't be made on its day, the regular post goes out instead.
+[testing]
+enabled = true
+start = "2026-10-28"
+per_day = 2
+
+# Fixed dates win over the rotation (and count toward the 2 a day).
+# lincoln = private jets into Lincoln for a Husker home game; post it the Sunday after.
 [formats]
-"2026-10-28" = { commercial = "guess" }
-"2026-10-30" = { all = "scoreboard" }
 "2026-11-01" = { commercial = "lincoln" }
-"2026-11-06" = { all = "scoreboard" }
 "2026-11-22" = { commercial = "lincoln" }
 
 # ---- How posts get published ----------------------------------------------

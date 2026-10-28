@@ -21,13 +21,43 @@ def cfg(tmp_path):
     return load_config(tmp_path / "config.toml")
 
 
-def test_schedule(cfg):
-    assert formats.format_for(cfg, date(2026, 10, 28), "commercial") == "guess"
-    assert formats.format_for(cfg, date(2026, 10, 28), "private") is None
-    assert formats.format_for(cfg, date(2026, 11, 1), "commercial") == "lincoln"
+def test_schedule_two_swaps_a_day_rotating(cfg):
+    from datetime import timedelta
+    seen = {}
+    for i in range(21):
+        d = date(2026, 10, 28) + timedelta(days=i)
+        plan = formats.day_plan(cfg, d)
+        assert len(plan) == 2 and "military" not in plan
+        for slot, f in plan.items():
+            assert f in formats.POOLS.get(slot, []) or f == "lincoln"
+            seen[f] = seen.get(f, 0) + 1
+        if d.strftime("%a") != "Tue":
+            assert "weekend" not in plan.values()
+    assert formats.day_plan(cfg, date(2026, 11, 1))["commercial"] == "lincoln"   # fixed date wins
+    assert formats.day_plan(cfg, date(2026, 10, 27)) == {}                         # before the test
+    assert all(seen.get(f, 0) >= 2 for f in ("guess", "farthest", "firstlast", "scoreboard", "hours", "types", "weekend"))
     assert formats.format_for(cfg, date(2026, 11, 1), "wrap") == "wrap"
     assert cfg.slot_active("wrap", date(2026, 11, 1)) and not cfg.slot_active("wrap", date(2026, 11, 2))
-    assert cfg.slot_active("commercial", date(2026, 11, 2))
+    cfg.raw["testing"]["enabled"] = False
+    assert formats.day_plan(cfg, date(2026, 10, 29)) == {}
+
+
+def test_new_concepts_data(cfg):
+    day = fl.build_day(cfg, fl.demo_raw(date(2026, 10, 26), cfg))
+    c = day["posts"]["commercial"]
+    far = formats.farthest(c)["list"]
+    assert len(far) == 3 and far[0]["miles"] >= far[1]["miles"] >= far[2]["miles"]
+    fl_ = formats.first_last(cfg, c)
+    assert fl_["first"]["time"] and fl_["last"]["city"] and fl_["between"] == len(c["moves"])
+    h = formats.hours(cfg, day["posts"]["all"])
+    assert len(h["rows"]) == 24 and h["rows"][0]["hour"] == 3                    # the flight day starts 3:30 AM
+    assert h["total"] == sum(1 for m in day["posts"]["all"]["moves"] if m["group"] != "military")
+    for fmt, stats in (("farthest", {"farthest_list": {"list": far}}), ("firstlast", {"first_last": fl_}),
+                       ("hours", {"hours": h})):
+        text = formats.caption_options(fmt, stats, date(2026, 10, 26), date(2026, 10, 28))[0]["text"]
+        assert "Monday" in text and "None" not in text and "?" not in text.split("\n")[0][-3:]
+    with pytest.raises(ValueError):
+        formats.types({"stats": {"top_types": [{"name": "Citation", "count": 3}]}})   # too few: regular post instead
 
 
 def test_guess_choices_hide_the_answer_in_alphabetical_order(cfg):

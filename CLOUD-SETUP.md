@@ -76,7 +76,7 @@ A red ✕? Click it, then the failed step; the last lines say what's wrong (usua
 
 ## New post concepts (the test)
 
-Every day 2 of the regular posts are swapped for new concepts (`[testing]` in
+Every day about half of the posts that go out are new concepts (`[testing]` in
 `cloud/config.toml`). Which post sits out rotates daily, and each post takes the concept
 that has run least so far. Military always stays regular (counts only).
 
@@ -86,6 +86,11 @@ that has run least so far. Military always stays regular (counts only).
 | 11 AM Private jets | #30 Which jets fly Omaha, #14 Weekend arrivals (Tuesdays) |
 | 6 PM All airports | #10 Metro scoreboard, #06 Busiest hours |
 | extra 10 AM Sunday | #07 Sunday weekly wrap (`[slots.wrap]`) |
+
+**Posting volume:** with `volume = true` each day posts 1, 2, 3 or all 4 of the regular posts
+(about half of them new concepts). The level rotates so every weekday gets each level once
+every 4 weeks, and which posts run rotates too. The weekly report's "Posts per day" tables
+compare total views per day for each level, overall and by weekday.
 
 Fixed dates under `[formats]` win over the rotation (the Lincoln game-weekend post on the
 Sunday after a Husker home game). Set `enabled = false` under `[testing]` to stop the test.

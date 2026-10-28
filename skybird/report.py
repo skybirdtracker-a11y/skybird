@@ -25,7 +25,8 @@ from . import engine, notify
 from .config import Config
 from .state import load_state, locked, save_state
 
-LOOKBACK_DAYS = 14
+LOOKBACK_DAYS = 28         # the posting-volume test needs 4 weeks to compare
+COLLECT_DAYS = 14          # numbers are refreshed for this many days; older ones are kept as saved
 SETTLE_HOURS = 20          # newer posts don't have meaningful numbers yet
 PAUSE = 0.4                # seconds between Buffer requests (keeps the API use gentle)
 MIN_POSTS = 2              # a group needs this many posts to be ranked
@@ -39,7 +40,7 @@ def collect(cfg: Config, key: str, now: datetime, session=None) -> tuple[int, li
     from .publishers import buffer
     kw = {"session": session} if session else {}
     done, problems = 0, []
-    for back in range(LOOKBACK_DAYS, -1, -1):
+    for back in range(COLLECT_DAYS, -1, -1):
         day = now.date() - timedelta(days=back)
         st = load_state(cfg, day)
         if not st:
@@ -96,6 +97,7 @@ def rows(cfg: Config, now: datetime) -> list[dict]:
                     "views": m.get("views"), "likes": m.get("likes", 0), "comments": m.get("comments", 0),
                     "shares": m.get("shares", 0), "saves": m.get("saves", 0), "follows": m.get("follows"),
                     "checked": r.get("checked", ""), "has_numbers": bool(m),
+                    "day_posts": tr.get("day_posts") or 4,
                 })
     medians = {}
     for plat in {r["platform"] for r in out}:
@@ -128,7 +130,48 @@ def _group(rs: list[dict], key: str, names: dict | None = None) -> list[tuple[st
 
 SLOT_NAMES = {"commercial": "Eppley commercial", "private": "Private jets", "military": "Offutt military",
               "all": "All airports", "guess": "#01 Guess the destination", "scoreboard": "#10 Metro scoreboard",
-              "wrap": "#07 Sunday weekly wrap", "lincoln": "Lincoln game-weekend jets"}
+              "wrap": "#07 Sunday weekly wrap", "lincoln": "Lincoln game-weekend jets",
+              "farthest": "#02 Farthest flight", "firstlast": "#03 First up, last down", "hours": "#06 Busiest hours",
+              "weekend": "#14 Weekend arrivals", "types": "#30 Which jets fly Omaha"}
+DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def volume_tables(rs: list[dict]) -> list[str]:
+    """Posting-volume test: per-post index and total views per day, by posts that day,
+    and total views by weekday x posts that day (days where every post has numbers)."""
+    days: dict = {}
+    for r in rs:
+        days.setdefault(r["day"], []).append(r)
+    full = {d: g for d, g in days.items() if all(r["has_numbers"] for r in g)}
+    if not full:
+        return []
+    lines = ["## Posts per day (last 4 weeks)", "",
+             "| Posts that day | Days | Index per post | Total views per day |", "|---|---:|---:|---:|"]
+    best = None
+    for n in (1, 2, 3, 4):
+        ds = [g for g in full.values() if g[0]["day_posts"] == n]
+        if not ds:
+            continue
+        idx = [r["index"] for g in ds for r in g if r["index"] is not None]
+        tot = round(statistics.mean(sum(r["views"] or 0 for r in g) for g in ds))
+        lines.append(f"| {n} | {len(ds)} | {round(statistics.median(idx)) if idx else '–'} | {tot:,} |")
+        if len(ds) >= 2 and (best is None or tot > best[1]):
+            best = (n, tot)
+    lines += ["", "| Day | " + " | ".join(f"{n} post{'s' if n > 1 else ''}" for n in (1, 2, 3, 4)) + " |",
+              "|---|" + "---:|" * 4]
+    for name in DAY_NAMES:
+        cells = []
+        for n in (1, 2, 3, 4):
+            ds = [g for d, g in full.items() if d.strftime("%a") == name and g[0]["day_posts"] == n]
+            cells.append(f"{round(statistics.mean(sum(r['views'] or 0 for r in g) for g in ds)):,}" if ds else "–")
+        lines.append(f"| {name} | " + " | ".join(cells) + " |")
+    lines += ["", "Total views per day across Instagram, Facebook and TikTok. Each weekday gets each level once "
+              "every 4 weeks, so this table fills in over the month. The Sunday wrap is extra and not counted as a level."]
+    if best:
+        lines.append(f"\nMost total views so far: **{best[0]} post{'s' if best[0] > 1 else ''} a day** "
+                     f"({best[1]:,} views a day).")
+    lines.append("")
+    return lines
 
 
 def build(cfg: Config, now: datetime) -> dict:
@@ -179,6 +222,7 @@ def build(cfg: Config, now: datetime) -> dict:
         top = [t for t in g if t[1] >= MIN_POSTS]
         if len(top) >= 2:
             winners.append(f"{name}: {top[0][0]} leads ({top[0][2]} vs {top[-1][2]} for {top[-1][0]})")
+    lines += volume_tables(rs)
     ranked = sorted((r for r in week if r["index"] is not None), key=lambda r: -r["index"])
     if ranked:
         lines += ["## Best and worst this week", "", "| Post | Platform | Views | Index |", "|---|---|---:|---:|"]

@@ -1200,7 +1200,8 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     # New formats taking a post's place today (skybird/formats.py), and the Sunday wrap
     from . import formats
     formats.record_fields(cfg, flight_day, stats["posts"]["all"].get("airports") or [])
-    wanted = [k for k in (slots or list(FILES)) if k != "wrap" or cfg.slot_active("wrap", post_date)]
+    # only the posts going out that day (the Sunday wrap; the posting-volume test can skip some)
+    wanted = [k for k in (slots or list(FILES)) if cfg.slot_active(k, post_date)]
     fmts, fposts = {}, {}
     for slot in wanted:
         fmt = formats.format_for(cfg, post_date, slot) if slot in (sl.key for sl in cfg.slots) else None

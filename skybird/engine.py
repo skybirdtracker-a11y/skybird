@@ -434,7 +434,14 @@ def tracking(cfg: Config, post_date: date, slot_key: str, post: dict) -> dict:
                      for p, on in post["platforms"].items() if on},
         "event": ", ".join(e["name"] for e in events_for(cfg, post_date, slot_key)),
         "format": post.get("format", ""),
+        "day_posts": _day_posts(cfg, post_date),
     }
+
+
+def _day_posts(cfg: Config, post_date: date) -> int:
+    """How many of the 4 regular posts went out that day (the posting-volume test)."""
+    from .formats import day_schedule
+    return day_schedule(cfg, post_date)["level"]
 
 
 NET_RETRY_MIN, NET_RETRY_MAX = 10, 6   # internet down: retry every 10 min for an hour

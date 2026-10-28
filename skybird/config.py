@@ -125,7 +125,12 @@ class Config:
     def slot_active(self, key: str, day: date) -> bool:
         """Does this post go out on `day`? (The Sunday wrap only runs on Sundays.)"""
         sl = next((s for s in self.slots if s.key == key), None)
-        return bool(sl) and (not sl.days or day.strftime("%a").lower() in sl.days)
+        if not sl:
+            return False
+        if sl.days:
+            return day.strftime("%a").lower() in sl.days
+        from .formats import ALL_SLOTS, day_schedule   # the posting-volume test can skip a post
+        return key not in ALL_SLOTS or key in day_schedule(self, day)["running"]
 
     def slot(self, key: str) -> Slot:
         for s in self.slots:

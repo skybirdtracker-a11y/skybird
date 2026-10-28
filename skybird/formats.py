@@ -54,9 +54,23 @@ def format_for(cfg: Config, post_date: date, slot_key: str) -> str | None:
     return day_plan(cfg, post_date).get(slot_key)
 
 
+ALL_SLOTS = ["commercial", "private", "military", "all"]
+
+
 def day_plan(cfg: Config, post_date: date) -> dict[str, str]:
-    """{slot: format} for the day: the fixed dates first, then the rotation fills up to
-    `per_day` swapped posts. Which post sits out rotates daily, and each slot takes the
+    """{slot: concept} for the day's swapped posts."""
+    return day_schedule(cfg, post_date)["formats"]
+
+
+def day_schedule(cfg: Config, post_date: date) -> dict:
+    """The day's plan: {"level": posts that day, "running": [slots that post], "formats": {slot: concept}}.
+
+    Volume test ([testing] volume = true): each day posts 1, 2, 3 or 4 of the regular
+    slots. The level follows a 4-week rotation, so every weekday gets each level once in
+    4 weeks, and which slots run rotates too (so no time of day is favored). About half
+    of the posts that run are new concepts (1 → 0 or 1, 2 → 1, 3 → 1 or 2, 4 → 2).
+    Otherwise all 4 post and `per_day` of them are concepts.
+    Fixed dates under [formats] always run and count as concepts. Each slot takes the
     concept that has run least so far (worked out day by day from the test's start)."""
     t = cfg.section("testing")
     try:
@@ -64,30 +78,39 @@ def day_plan(cfg: Config, post_date: date) -> dict[str, str]:
     except ValueError:
         start = None
     pools = {k: [f for f in v if f in FORMATS] for k, v in (t.get("pools") or POOLS).items()}
-    slots = [k for k in ("commercial", "private", "all") if pools.get(k)]
-    per_day = int(t.get("per_day", 2))
-    on = bool(start) and t.get("enabled", True) and bool(slots)
+    on = bool(start) and t.get("enabled", True)
+    volume = on and t.get("volume", False)
     used: Counter = Counter()
 
-    def plan_for(d: date) -> dict[str, str]:
-        plan = {k: v for k, v in (cfg.section("formats").get(d.isoformat()) or {}).items() if v in FORMATS}
+    def plan_for(d: date) -> dict:
+        fixed = {k: v for k, v in (cfg.section("formats").get(d.isoformat()) or {}).items() if v in FORMATS}
         if not on or d < start:
-            return plan
+            return {"level": len(ALL_SLOTS), "running": list(ALL_SLOTS), "formats": fixed}
         k = (d - start).days
-        for slot in [slots[(k + i) % len(slots)] for i in range(len(slots))]:
-            if len(plan) >= per_day:
+        if volume:
+            level = (d.weekday() + k // 7) % 4 + 1
+            new = level // 2 + (level % 2 if k % 2 else 0)
+        else:
+            level, new = len(ALL_SLOTS), int(t.get("per_day", 2))
+        order = [ALL_SLOTS[(k + i) % len(ALL_SLOTS)] for i in range(len(ALL_SLOTS))]
+        running = list(fixed) + [x for x in order if x not in fixed]
+        running = running[:max(level, len(fixed))]
+        plan = dict(fixed)
+        for slot in running:
+            if len(plan) >= max(new, len(fixed)):
                 break
-            if slot in plan:
+            if slot in plan or not pools.get(slot):
                 continue
             ok = [f for f in pools[slot] if ONLY_ON.get(f, d.strftime("%a")) == d.strftime("%a")]
             if ok:
                 plan[slot] = min(ok, key=lambda f: (used[f], pools[slot].index(f)))
-        return plan
+        running = [x for x in ALL_SLOTS if x in running]   # in the day's order
+        return {"level": len(running), "running": running, "formats": plan}
 
-    if on:
+    if on and start <= post_date:
         d = start
         while d < post_date:
-            used.update(plan_for(d).values())
+            used.update(plan_for(d)["formats"].values())
             d += timedelta(days=1)
     return plan_for(post_date)
 

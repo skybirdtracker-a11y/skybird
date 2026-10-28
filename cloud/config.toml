@@ -86,8 +86,8 @@ file = "post5_wrap.mp4"
 platforms = ["instagram", "facebook", "tiktok"]
 days = ["sun"]
 
-# ---- New concepts (the test) ------------------------------------------------
-# Every day 2 of the regular posts are swapped for new concepts. Which post sits out
+# ---- New concepts + posting volume (the test) -------------------------------
+# Every day some of the regular posts are swapped for new concepts. Which post sits out
 # rotates daily, and each post takes the concept that has run least so far, so every
 # concept gets a fair number of tries. Military always stays regular (counts only).
 # Turn the test off with enabled = false. Concepts per post:
@@ -99,6 +99,11 @@ days = ["sun"]
 enabled = true
 start = "2026-10-28"
 per_day = 2
+# Posting-volume test: each day posts 1, 2, 3 or all 4 of the regular posts (about half
+# of them new concepts). The level rotates so every weekday gets each level once every
+# 4 weeks, and which posts run rotates too. The weekly report compares total views per
+# day for each level. false = always post all 4 (with per_day concepts).
+volume = true
 
 # Fixed dates win over the rotation (and count toward the 2 a day).
 # lincoln = private jets into Lincoln for a Husker home game; post it the Sunday after.

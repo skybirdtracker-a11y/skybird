@@ -21,25 +21,39 @@ def cfg(tmp_path):
     return load_config(tmp_path / "config.toml")
 
 
-def test_schedule_two_swaps_a_day_rotating(cfg):
+def test_volume_test_balanced_levels_and_half_new(cfg):
+    from collections import Counter
     from datetime import timedelta
-    seen = {}
-    for i in range(21):
+    levels, seen = Counter(), Counter()
+    for i in range(28):
         d = date(2026, 10, 28) + timedelta(days=i)
-        plan = formats.day_plan(cfg, d)
-        assert len(plan) == 2 and "military" not in plan
-        for slot, f in plan.items():
-            assert f in formats.POOLS.get(slot, []) or f == "lincoln"
-            seen[f] = seen.get(f, 0) + 1
+        sc = formats.day_schedule(cfg, d)
+        levels[(d.strftime("%a"), sc["level"])] += 1
+        assert len(sc["running"]) == sc["level"]
+        assert set(sc["formats"]) <= set(sc["running"]) and "military" not in sc["formats"]
+        assert len(sc["formats"]) <= (sc["level"] + 1) // 2 or "lincoln" in sc["formats"].values()
+        assert all(cfg.slot_active(k, d) == (k in sc["running"]) for k in formats.ALL_SLOTS)
+        seen.update(sc["formats"].values())
         if d.strftime("%a") != "Tue":
-            assert "weekend" not in plan.values()
-    assert formats.day_plan(cfg, date(2026, 11, 1))["commercial"] == "lincoln"   # fixed date wins
-    assert formats.day_plan(cfg, date(2026, 10, 27)) == {}                         # before the test
-    assert all(seen.get(f, 0) >= 2 for f in ("guess", "farthest", "firstlast", "scoreboard", "hours", "types", "weekend"))
-    assert formats.format_for(cfg, date(2026, 11, 1), "wrap") == "wrap"
-    assert cfg.slot_active("wrap", date(2026, 11, 1)) and not cfg.slot_active("wrap", date(2026, 11, 2))
+            assert "weekend" not in sc["formats"].values()
+    # every weekday gets 1, 2, 3 and 4 posts once in 4 weeks
+    assert len(levels) == 28 and set(levels.values()) == {1}
+    assert formats.day_schedule(cfg, date(2026, 11, 1))["formats"]["commercial"] == "lincoln"   # fixed date runs
+    assert formats.day_schedule(cfg, date(2026, 10, 27)) == {"level": 4, "running": formats.ALL_SLOTS, "formats": {}}
+    assert all(seen[f] >= 2 for f in ("guess", "farthest", "firstlast", "scoreboard", "hours", "types"))
+
+
+def test_without_volume_test_all_four_post_with_two_concepts(cfg):
+    from datetime import timedelta
+    cfg.raw["testing"]["volume"] = False
+    for i in range(14):
+        d = date(2026, 10, 28) + timedelta(days=i)
+        sc = formats.day_schedule(cfg, d)
+        assert sc["level"] == 4 and len(sc["formats"]) == 2
     cfg.raw["testing"]["enabled"] = False
     assert formats.day_plan(cfg, date(2026, 10, 29)) == {}
+    assert formats.format_for(cfg, date(2026, 11, 1), "wrap") == "wrap"
+    assert cfg.slot_active("wrap", date(2026, 11, 1)) and not cfg.slot_active("wrap", date(2026, 11, 2))
 
 
 def test_new_concepts_data(cfg):
@@ -169,15 +183,41 @@ def test_prepare_uses_the_format_and_the_sunday_wrap(cfg):
     assert not any(m["checked"] and m["handle"].lower() == "@omaairport" for m in c["mentions"]["instagram"])
     assert st["posts"]["wrap"]["title"] == "Sunday weekly wrap"
     assert engine.tracking(cfg, date(2026, 11, 1), "commercial", c)["format"] == "lincoln"
-    # Monday: no wrap post, regular captions
+    assert engine.tracking(cfg, date(2026, 11, 1), "commercial", c)["day_posts"] == 3
+    assert set(st["posts"]) == {"commercial", "private", "military", "wrap"}    # Sunday Nov 1: 3 posts + the wrap
+    # Monday Nov 2: a 1-post day (volume test), no wrap
     _stats_file(cfg, date(2026, 11, 2), {k: v["stats"] for k, v in day["posts"].items()})
     st2 = engine.prepare(cfg, date(2026, 11, 2), force=True, render=False, quiet=True)
-    assert "wrap" not in st2["posts"] and st2["posts"]["commercial"]["format"] == ""
+    assert list(st2["posts"]) == formats.day_schedule(cfg, date(2026, 11, 2))["running"] and len(st2["posts"]) == 1
 
 
 def test_plan_schedules_the_wrap_only_on_sundays(cfg):
     sun = datetime(2026, 11, 1, 4, 0, tzinfo=cfg.tz)
     times = cloud.plan(cfg, sun.date(), sun)
     assert times["wrap"].strftime("%H:%M") == "10:00" and times["commercial"].strftime("%H:%M") == "09:00"
+    assert set(times) == {"commercial", "private", "military", "wrap"}
     mon = datetime(2026, 11, 2, 4, 0, tzinfo=cfg.tz)
-    assert "wrap" not in cloud.plan(cfg, mon.date(), mon)
+    assert set(cloud.plan(cfg, mon.date(), mon)) == set(formats.day_schedule(cfg, mon.date())["running"])
+
+
+def test_report_compares_posts_per_day(cfg):
+    from datetime import timedelta
+    from skybird import report
+    from skybird.state import save_state
+    start = date(2026, 10, 28)
+    for i in range(27):
+        d = start + timedelta(days=i)
+        sc = formats.day_schedule(cfg, d)
+        posts = {}
+        for slot in sc["running"]:
+            views = 1000 + 300 * (4 - sc["level"])          # fewer posts -> more views each, but less in total
+            posts[slot] = {"title": slot, "posted_at": f"{d}T09:00:00-05:00",
+                           "tracking": {"caption_style": "friendly", "format": sc["formats"].get(slot, ""),
+                                        "mentions": {}, "day_posts": sc["level"]},
+                           "results": {"instagram": {"ok": True, "id": f"{d}{slot}", "metrics": {"views": views}}}}
+        save_state(cfg, d, {"posts": posts})
+    md = report.build(cfg, datetime(2026, 11, 24, 8, 20, tzinfo=cfg.tz))["markdown"]
+    assert "## Posts per day (last 4 weeks)" in md
+    assert "| 2 | 7 |" in md and "| 4 | 7 |" in md and "| 1 | 6 |" in md   # 27 days: one 1-post day still to come
+    assert "Most total views so far: **4 posts a day**" in md
+    assert "| Wed |" in md

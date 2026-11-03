@@ -39,15 +39,17 @@ POSTS = {
     "commercial": {"kicker": "EPPLEY · OMA", "fields": ["KOMA"],
                    "dep": ("Where did Omaha", "fly yesterday?"), "arr": ("And who flew", "into OMA."),
                    "stats": ("Eppley, by the", "numbers."), "colors": {"dep": BIRD, "arr": ORANGE}},
-    "private": {"kicker": "PRIVATE JETS · METRO", "fields": ["KOMA", "KMLE", "KCBF"],
-                "dep": ("Where Omaha's", "private jets went."), "arr": ("Private jets", "flying in."),
-                "stats": ("Private jets, by", "the numbers."), "colors": {"dep": ORANGE, "arr": NAVY}},
+    "private": {"kicker": "PRIVATE PLANES · METRO", "fields": ["KOMA", "KMLE", "KCBF"],
+                "dep": ("Where Omaha's", "private planes went."), "arr": ("Private planes", "flying in."),
+                "stats": ("Private planes,", "by the numbers."), "by_group": True,
+                "colors": {"bizjet": ORANGE, "prop": NAVY, "unknown": "#9AAFC4"},
+                "legend": [("Private jet", ORANGE, "bizjet"), ("Small plane", NAVY, "prop"), ("Type unknown", "#9AAFC4", "unknown")]},
     "military": {"kicker": "OFFUTT · OFF · MILITARY", "fields": ["KOFF"],
                  "dep": ("What flew at", "Offutt yesterday?"), "stats": ("Offutt, by the", "numbers.")},
     "all": {"kicker": "ALL AIRPORTS · METRO", "fields": ["KOMA", "KMLE", "KCBF", "KOFF"],
             "dep": ("Every flight", "out of Omaha."), "arr": ("And every flight", "coming home."),
             "stats": ("The whole metro,", "by the numbers."),
-            "colors": {"airline": BIRD, "bizjet": ORANGE, "prop": NAVY}},
+            "colors": {"airline": BIRD, "bizjet": ORANGE, "prop": NAVY, "unknown": NAVY}},
 }
 # The new formats (skybird/formats.py) that take a regular post's place on chosen days.
 FORMAT_SPECS = {
@@ -59,13 +61,13 @@ FORMAT_SPECS = {
     "firstlast": dict(POSTS["commercial"], kicker="FIRST UP, LAST DOWN · EPPLEY"),
     "hours": dict(POSTS["all"], kicker="BUSIEST HOURS · METRO"),
     "types": dict(POSTS["private"], kicker="WHICH JETS · METRO"),
-    "weekend": {"kicker": "PRIVATE JETS · WEEKEND", "fields": ["KOMA", "KMLE", "KCBF"],
+    "weekend": {"kicker": "PRIVATE PLANES · WEEKEND", "fields": ["KOMA", "KMLE", "KCBF"],
                 "arr": ("Who flew in for", "the weekend?"), "stats": ("The weekend,", "by the numbers."),
-                "colors": {"arr": ORANGE}},
+                "by_group": True, "colors": POSTS["private"]["colors"], "legend": POSTS["private"]["legend"]},
     "wrap": {"kicker": "THE WEEK · METRO", "fields": ["KOMA"], "stats": ("Omaha's week,", "by the numbers.")},
     "lincoln": {"kicker": "GAME WEEKEND · LINCOLN", "fields": ["KLNK"],
                 "arr": ("Who flew in for", "the Huskers?"), "stats": ("Game weekend,", "by the numbers."),
-                "colors": {"arr": ORANGE}},
+                "by_group": True, "colors": POSTS["private"]["colors"], "legend": POSTS["private"]["legend"]},
 }
 TOWNS = [("Omaha", -95.9345, 41.2565, "big"), ("Lincoln", -96.7026, 40.8136, "big"),
          ("Council Bluffs", -95.8608, 41.2619, ""), ("Bellevue", -95.9145, 41.1370, ""),
@@ -452,11 +454,12 @@ class Reel:
         moves.sort(key=lambda m: m["t"])
         total = self.s["departures" if which == "dep" else "arrivals"]
         colors = self.spec["colors"]
-        color_of = (lambda m: colors[m["group"]]) if self.slot == "all" else (lambda m: colors[which])
+        by_group = self.slot == "all" or self.spec.get("by_group")
+        color_of = (lambda m: colors.get(m["group"], NAVY)) if by_group else (lambda m: colors[which])
         self._title(cv, which)
         hud = self._hud(cv, "DEPARTURES" if which == "dep" else "ARRIVALS", total)
-        if self.slot == "all":
-            self._legend(cv)
+        if by_group:
+            self._legend(cv, {m["group"] for m in moves})
         pins = self._pins(cv)
         self._sample_stamp(cv)
         fade = self._fade(cv)
@@ -584,10 +587,14 @@ class Reel:
             return f"{t.strftime('%a').upper()} {(t.hour % 12) or 12} {'AM' if t.hour < 12 else 'PM'}"
         return t.strftime("%I:%M %p").lstrip("0")
 
-    def _legend(self, cv):
-        items = [("Airline", BIRD), ("Private jet", ORANGE), ("Props + other", NAVY)]
+    def _legend(self, cv, groups=None):
+        if self.spec.get("legend"):   # only the kinds that are on the map
+            items = [(name, col) for name, col, g in self.spec["legend"] if groups is None or g in groups or g != "unknown"]
+        else:
+            items = [("Airline", BIRD), ("Private jet", ORANGE), ("Props + other", NAVY)]
         x, y = 50, 1345
-        cv.rbox(x, y - 28, 560, 44, 22, WHITE, z=20, shadow=False)
+        w = 44 + sum(34 + cv.width(name, 20, cv.f.body) + 30 for name, _ in items) - 30
+        cv.rbox(x, y - 28, max(w, 300), 44, 22, WHITE, z=20, shadow=False)
         xx = x + 22
         for name, col in items:
             cv.ui.plot([xx, xx + 26], [y - 6, y - 6], color=col, lw=5 * PX, solid_capstyle="round", zorder=22)
@@ -661,6 +668,8 @@ class Reel:
                 self._tile(cv, x, y, 470, 150, shown, label, color, t=t, born=0.25 + i * 0.12)
             if self.slot == "military":
                 self._week_bars(cv, t)
+            elif self._trend_ok():
+                self._trend(cv, t)
             else:
                 self._city_rows(cv, rows, t)
             for i, (label, value) in enumerate(facts):
@@ -681,7 +690,7 @@ class Reel:
     def _stats_kicker(self):
         if self.fmt:
             return self.spec["kicker"]
-        return {"commercial": "EPPLEY · OMA", "private": "PRIVATE JETS · METRO", "military": "OFFUTT · OFF",
+        return {"commercial": "EPPLEY · OMA", "private": "PRIVATE PLANES · METRO", "military": "OFFUTT · OFF",
                 "all": "ALL AIRPORTS · METRO"}[self.slot]
 
     def _stats_content(self):
@@ -697,7 +706,7 @@ class Reel:
             return tiles, s.get("top_destinations", [])[:5], facts
         if self.fmt == "weekend":
             bd = {d["label"]: d["count"] for d in s.get("by_day", [])}
-            tiles = [(s["arrivals"], "PRIVATE JETS IN", ORANGE), (s.get("cities_linked", 0), "CITIES", NAVY),
+            tiles = [(s.get("jets", s["arrivals"]), "PRIVATE JETS IN", ORANGE), (s.get("small", 0), "SMALL PLANES IN", NAVY),
                      (bd.get("SAT", 0), "SATURDAY", NAVY), (bd.get("SUN", 0), "SUNDAY", NAVY)]
             facts = []
             if s.get("farthest"):
@@ -707,9 +716,9 @@ class Reel:
             return tiles, s.get("top_origins", [])[:5], facts
         if self.fmt == "lincoln":
             pct = s.get("change_pct")
-            tiles = [(s["arrivals"], "PRIVATE JETS IN", ORANGE), (s.get("normal", 0), "A NORMAL WEEKEND", NAVY),
-                     (f"{'+' if (pct or 0) >= 0 else ''}{pct}%" if pct is not None else "–", "VS NORMAL", ORANGE),
-                     (s.get("cities_linked", 0), "CITIES", NAVY)]
+            tiles = [(s.get("jets", s["arrivals"]), "PRIVATE JETS IN", ORANGE), (s.get("normal", 0), "JETS, NORMAL WEEKEND", NAVY),
+                     (f"{'+' if (pct or 0) >= 0 else ''}{pct}%" if pct is not None else "–", "JETS VS NORMAL", ORANGE),
+                     (s.get("small", 0), "SMALL PLANES IN", NAVY)]
             facts = [("THU · FRI · SAT", " · ".join(str(d["count"]) for d in s.get("by_day", [])))]
             if s.get("farthest"):
                 facts.append(("FARTHEST", f"{s['farthest']['code']} · {s['farthest']['miles']:,} mi"))
@@ -729,6 +738,9 @@ class Reel:
         noun = {"commercial": "AIRLINE FLIGHTS", "private": "PRIVATE JETS", "all": "FLIGHTS, ALL FIELDS"}[self.slot]
         tiles = [(s["flights"], noun, NAVY), (s["departures"], "DEPARTURES", NAVY),
                  (s["arrivals"], "ARRIVALS", ORANGE), (s.get("cities_linked", 0), "CITIES LINKED", NAVY)]
+        if self.slot == "private" and "jets" in s:   # jets and small planes, labeled apart
+            tiles = [(s["jets"], "PRIVATE JETS", ORANGE), (s["small"], "SMALL PLANES", NAVY),
+                     (s["departures"], "DEPARTURES", NAVY), (s["arrivals"], "ARRIVALS", NAVY)]
         rows = s.get("top_destinations", [])[:5]
         facts = []
         if s.get("first_wheels_up"):
@@ -742,7 +754,10 @@ class Reel:
             facts.append(("TOP AIRLINE", f"{a['name']} · {a['count']}"))
         elif self.slot == "private" and (s.get("top_types") or s.get("top_operators")):
             a = (s.get("top_types") or s.get("top_operators"))[0]
-            facts.append(("TOP TYPE" if s.get("top_types") else "TOP OPERATOR", f"{a['name']} · {a['count']}"))
+            facts.append(("TOP JET" if s.get("top_types") else "TOP OPERATOR", f"{a['name']} · {a['count']}"))
+            if s.get("top_small_types"):
+                b = s["top_small_types"][0]
+                facts.append(("TOP SMALL PLANE", f"{b['name']} · {b['count']}"))
         elif self.slot == "all" and s.get("airports"):
             a = max(s["airports"], key=lambda r: r["count"])
             facts.append(("BUSIEST FIELD", f"{a['code']} · {a['count']}"))
@@ -764,6 +779,37 @@ class Reel:
             cv.rbox(160, y + 2, w, 42, 10, "#D7ECFB", z=10)
             cv.text(180, y + 31, r["city"], 22, INK, cv.f.body, z=12, alpha=min(1, g * 2))
             cv.text(1018, y + 31, str(r["count"]), 26, NAVY, cv.f.mono, ha="right", z=12, alpha=min(1, g * 2))
+
+    def _trend_ok(self):
+        tr = self.s.get("trend") or []
+        return self.slot == "private" and not self.fmt and sum(1 for d in tr if d.get("jets") is not None) >= 2
+
+    def _trend(self, cv, t):
+        """Two trend lines over the last 7 days: private jets (orange) and small planes (navy)."""
+        tr = self.s["trend"]
+        cv.spaced(62, 1010, "LAST 7 DAYS", 16, MUTED, cv.f.mono6, spacing=2.4, z=12)
+        lx = 300
+        for name, col in (("PRIVATE JETS", ORANGE), ("SMALL PLANES", NAVY)):
+            cv.ui.plot([lx, lx + 30], [1004, 1004], color=col, lw=5 * PX, solid_capstyle="round", zorder=12)
+            cv.spaced(lx + 40, 1010, name, 16, col, cv.f.mono6, spacing=2.2, z=12)
+            lx += 300
+        top, base, x0, x1 = 1050, 1250, 100, 980
+        mx = max([max(d.get("jets") or 0, d.get("small") or 0) for d in tr] + [1])
+        g = ease((t - 1.2) / 1.4)
+        xs = [x0 + i * (x1 - x0) / (len(tr) - 1) for i in range(len(tr))]
+        cv.ui.plot([x0, x1], [base, base], color=LINE, lw=2 * PX, zorder=10)
+        for key, col in (("jets", ORANGE), ("small", NAVY)):
+            pts = [(x, base - (base - top) * (d[key] / mx)) for x, d in zip(xs, tr) if d.get(key) is not None]
+            n = max(1, int(round(len(pts) * g)))
+            if g > 0 and len(pts) >= 2:
+                cv.ui.plot([p[0] for p in pts[:n]], [p[1] for p in pts[:n]], color=col, lw=5 * PX,
+                           solid_joinstyle="round", solid_capstyle="round", zorder=11)
+                cv.ui.plot([p[0] for p in pts[:n]], [p[1] for p in pts[:n]], "o", ms=10 * PX, color=col, zorder=12)
+            if g >= 1 and pts:
+                cv.text(pts[-1][0] + 14, pts[-1][1] + 8, str(tr[-1][key] if tr[-1].get(key) is not None else ""),
+                        26, col, cv.f.mono, z=12)
+        for x, d in zip(xs, tr):
+            cv.text(x, base + 36, d["label"], 18, MUTED, cv.f.mono6, ha="center", z=12)
 
     def _week_bars(self, cv, t):
         cv.spaced(62, 1010, "LAST 7 DAYS · MOVEMENTS", 16, MUTED, cv.f.mono6, spacing=2.4, z=12)
@@ -1153,7 +1199,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         # backup runs never spend the daily allowance again.
         saved = json.loads(master.read_text(encoding="utf-8"))
         raw, breakdown = saved["flights"], saved.get("eppley_arrivals", {})
-        info = fl.aircraft_info(cfg, {f.get("icao24") for f in raw if f.get("icao24")}, None)
+        info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), None)
         session = None   # nothing else may ask OpenSky either (e.g. the military history)
         log(cfg, f"Using the flight list already pulled for {flight_day} ({len(raw)} flights; no OpenSky requests)")
     else:
@@ -1176,7 +1222,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         breakdown = {"from_opensky": from_opensky, "moved_from_council_bluffs": after_fix - from_opensky,
                      "filled_in": fl.eppley_arrivals(cfg, raw) - after_fix}
         breakdown["total"] = sum(breakdown.values())
-        info = fl.aircraft_info(cfg, {f.get("icao24") for f in raw if f.get("icao24")}, session)
+        info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), session)   # type lookups: private planes only
         master.parent.mkdir(parents=True, exist_ok=True)
         master.write_text(json.dumps({"flights": raw, "eppley_arrivals": breakdown,
                                       "fetched_at": int(time.time())}), encoding="utf-8")
@@ -1197,6 +1243,8 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         for d in week[:-1]:
             d["count"] = d["count"] if d["count"] is not None else rnd.randint(4, 14)
     stats["posts"]["military"]["week"] = week
+    stats["posts"]["private"]["trend"] = fl.private_week(cfg, flight_day, stats["posts"]["private"])
+    day["posts"]["private"]["stats"]["trend"] = stats["posts"]["private"]["trend"]
     # New formats taking a post's place today (skybird/formats.py), and the Sunday wrap
     from . import formats
     formats.record_fields(cfg, flight_day, stats["posts"]["all"].get("airports") or [])

@@ -38,6 +38,7 @@ METRO = {  # ICAO -> short name
     "KCBF": "Council Bluffs",
 }
 HUB = "KOMA"
+PRIVATE_GROUPS = ("bizjet", "prop", "unknown")   # the 11 AM post: private jets + small planes
 
 AIRLINES = {
     "AAL": "American", "UAL": "United", "DAL": "Delta", "SWA": "Southwest", "SKW": "SkyWest",
@@ -435,9 +436,11 @@ def build_day(cfg: Config, raw: list[dict], info: dict | None = None) -> dict:
         elif kind == "military":
             group = "military"
         elif meta.get("cls") == "prop":
-            group = "prop"
+            group = "prop"      # small planes: props and turboprops
+        elif meta.get("cls") == "jet" or cs[:3] in PRIVATE_OPERATORS:
+            group = "bizjet"    # private jets (NetJets, Flexjet... fly only jets)
         else:
-            group = "bizjet"  # jets, plus unknown types from named jet operators / N-numbers
+            group = "unknown"   # type not looked up yet (shown apart, never called a jet)
         base = {"callsign": cs, "kind": kind, "group": group,
                 "airline": airlines.get(cs[:3]) if kind == "commercial" else PRIVATE_OPERATORS.get(cs[:3]),
                 "family": meta.get("family"), "t0": f.get("firstSeen"), "t1": f.get("lastSeen")}
@@ -449,7 +452,7 @@ def build_day(cfg: Config, raw: list[dict], info: dict | None = None) -> dict:
             out.append(dict(base, dir="local", metro=dep, other=None, metro_place=place(dep), t=f.get("firstSeen")))
     posts = {
         "commercial": [m for m in out if m["group"] == "airline" and m["metro"] == HUB],
-        "private": [m for m in out if m["group"] == "bizjet" and m["metro"] != "KOFF"],
+        "private": [m for m in out if m["group"] in PRIVATE_GROUPS and m["metro"] != "KOFF"],
         "military": [m for m in out if m["group"] == "military"],
         "all": out,
     }
@@ -512,14 +515,57 @@ def stats(cfg: Config, slot: str, moves: list[dict]) -> dict:
         s["first_wheels_up"] = _clock(cfg, first)
     if slot == "commercial":
         s["top_airlines"] = [{"name": n, "count": c} for n, c in Counter(m["airline"] for m in moves if m["airline"]).most_common(5)]
-    if slot == "private":
-        s["top_types"] = [{"name": n, "count": c} for n, c in Counter(m["family"] for m in moves if m["family"]).most_common(5)]
+    if slot == "private":   # private jets and small planes, counted apart
+        s["jets"] = sum(1 for m in moves if m["group"] == "bizjet")
+        s["small"] = sum(1 for m in moves if m["group"] == "prop")
+        s["unknown"] = sum(1 for m in moves if m["group"] == "unknown")
+        s["top_types"] = [{"name": n, "count": c} for n, c in
+                          Counter(m["family"] for m in moves if m["family"] and m["group"] == "bizjet").most_common(5)]
+        s["top_small_types"] = [{"name": n, "count": c} for n, c in
+                                Counter(m["family"] for m in moves if m["family"] and m["group"] == "prop").most_common(3)]
         s["top_operators"] = [{"name": n, "count": c} for n, c in Counter(m["airline"] for m in moves if m["airline"]).most_common(3)]
     if slot == "all":
         c = Counter(m["metro"] for m in moves)
         s["airports"] = [{"code": place(i)["code"] if place(i) else i, "name": METRO[i], "count": c.get(i, 0)} for i in METRO]
         s["by_group"] = dict(Counter(m["group"] for m in moves))
     return s
+
+
+def private_icao24s(cfg: Config, raw: list[dict]) -> set:
+    """The planes whose type matters (private and small planes): the daily type lookups
+    go to these only, not to airliners (whose type no post uses)."""
+    airlines, mil, excl = _lists(cfg)
+    return {f.get("icao24") for f in raw if f.get("icao24") and classify(f, airlines, mil, excl) == "private"}
+
+
+def private_week(cfg: Config, day: date, today: dict) -> list[dict]:
+    """Private jets and small planes per flight day for the last 7 days (the trend lines).
+    Earlier days come from daily_counts.json, else from the saved flight lists."""
+    path = cfg.data_dir / "daily_counts.json"
+    try:
+        hist = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        hist = {}
+    hist.setdefault(day.isoformat(), {})["private"] = {"jets": today.get("jets", 0), "small": today.get("small", 0)}
+    out = []
+    for i in range(6, -1, -1):
+        d = day - timedelta(days=i)
+        row = (hist.get(d.isoformat()) or {}).get("private")
+        if row is None:
+            try:
+                raw = json.loads((cfg.data_dir / "flights" / f"{d.isoformat()}.json").read_text(encoding="utf-8"))["flights"]
+                st = build_day(cfg, raw, aircraft_info(cfg, private_icao24s(cfg, raw), None))["posts"]["private"]["stats"]
+                row = {"jets": st["jets"], "small": st["small"]}
+                hist.setdefault(d.isoformat(), {})["private"] = row
+            except (OSError, ValueError, KeyError):
+                row = None
+        out.append({"date": d.isoformat(), "label": d.strftime("%a").upper(),
+                    "jets": row["jets"] if row else None, "small": row["small"] if row else None})
+    try:
+        path.write_text(json.dumps(hist, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return out
 
 
 # ---- Offutt weekly counts (for the military stats bars) -----------------------------------

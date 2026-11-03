@@ -135,6 +135,11 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
     field = max(stats.get("airports") or [{}], key=lambda a: _n(a.get("count")))
     ev = events[0] if events else None
     ev_hook = (ev.get("caption_hook") or "").strip() if ev else ""
+    small_txt = ""
+    if slot_key == "private" and "jets" in stats:   # private jets and small planes are counted apart
+        total = _n(stats.get("jets"))
+        if _n(stats.get("small")):
+            small_txt = f", plus {_n(stats['small']):,} by small planes"
     n = f"{total:,}" if total else "every"
 
     if slot_key == "military":  # counts only: no routes, callsigns, tails or times
@@ -154,12 +159,12 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
         if top_city:
             question += f" {top_city} led {day} with {top.get('count')} flights."
     elif slot_key == "private":
-        friendly = f"Morning, Omaha. {n} private jet takeoffs and landings across the metro fields on {day}."
+        friendly = f"Morning, Omaha. {n} private jet takeoffs and landings across the metro fields on {day}{small_txt}."
         if top_city:
             friendly += f" Most popular city: {top_city}."
         if ftype.get("name"):
             friendly += f" Most common type: {ftype['name']}."
-        deadpan = f"{n} private jet takeoffs and landings on {day}. None of them offered us a ride."
+        deadpan = f"{n} private jet takeoffs and landings on {day}{small_txt}. None of them offered us a ride."
         question = "If you had a private jet for a day, where would you take it from Omaha?"
         if top_city:
             question += f" {day}'s favorite: {top_city}."
@@ -182,7 +187,7 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
               f"Did you know? Eppley handled {n} airline flights {when}, about one every few minutes. ✈️"
         guess = f"Guess before you watch: what was Eppley's top destination {when}? 👇 Answer at the end of the video."
     elif slot_key == "private":
-        dyk = f"Did you know? Private jets made {n} takeoffs and landings around the Omaha metro {when}."
+        dyk = f"Did you know? Private jets made {n} takeoffs and landings around the Omaha metro {when}{small_txt}."
         if ftype.get("name"):
             dyk += f" The most common type was the {ftype['name']}."
         guess = f"Guess: how many private jets flew into Omaha {when}? Closest guess in the comments gets bragging rights."

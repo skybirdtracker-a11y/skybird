@@ -128,21 +128,26 @@ def test_lincoln_window_and_fair_baseline(cfg):
     assert all((e - (b - b % 86400)) < 2 * 86400 for b, e in pieces)   # each within 2 UTC days
 
 
-def test_lincoln_counts_private_jets_only_and_asks_opensky_once(cfg):
+def test_lincoln_splits_jets_and_small_planes_and_asks_opensky_once(cfg):
     asked = []
     planes = [
-        {"callsign": "N123AB", "icao24": "a00001", "estDepartureAirport": "KCMH", "estArrivalAirport": "KLNK"},
-        {"callsign": "EJA455", "icao24": "a00002", "estDepartureAirport": "KSEA", "estArrivalAirport": "KLNK"},
+        {"callsign": "N123AB", "icao24": "a00001", "estDepartureAirport": "KCMH", "estArrivalAirport": "KLNK"},  # small plane
+        {"callsign": "N9JT", "icao24": "a00006", "estDepartureAirport": "KSEA", "estArrivalAirport": "KLNK"},    # jet
+        {"callsign": "N77Q", "icao24": "a00007", "estDepartureAirport": "KHSI", "estArrivalAirport": "KLNK"},    # type unknown
         {"callsign": "SWA123", "icao24": "a00003", "estDepartureAirport": "KDEN", "estArrivalAirport": "KLNK"},  # airline
         {"callsign": "RCH12", "icao24": "ae0004", "estDepartureAirport": "KOFF", "estArrivalAirport": "KLNK"},   # military
         {"callsign": "N55X", "icao24": "a00005", "estDepartureAirport": "KLNK", "estArrivalAirport": "KLNK"},    # local
     ]
+    cfg.data_dir.mkdir(parents=True, exist_ok=True)
+    (cfg.data_dir / "aircraft_cache.json").write_text(json.dumps({
+        "a00001": {"cls": "prop", "family": "King Air"}, "a00006": {"cls": "jet", "family": "Citation"}}))
 
     def fake_get(cfg_, s, path, params):
         asked.append(params["begin"])
         t = params["begin"] + 3600
-        return [dict(p, firstSeen=t - 7200, lastSeen=t) for p in planes] if len(asked) <= 2 else planes[:1] and \
-            [dict(planes[0], firstSeen=params["begin"], lastSeen=params["begin"] + 60)]
+        if len(asked) <= 2:   # the game weekend: everything, in both pieces
+            return [dict(p, firstSeen=t - 7200, lastSeen=t) for p in planes]
+        return [dict(planes[1], firstSeen=params["begin"], lastSeen=params["begin"] + 60)]   # a normal weekend: 1 jet each piece
     orig = fl._get
     fl._get = fake_get
     try:
@@ -153,12 +158,44 @@ def test_lincoln_counts_private_jets_only_and_asks_opensky_once(cfg):
     finally:
         fl._get = orig
     s = out["stats"]
-    assert s["arrivals"] == 4 and s["normal"] == 2 and s["change_pct"] == 100
-    assert {o["code"] for o in s["top_origins"]} == {"CMH", "SEA"}
-    assert out2["stats"]["arrivals"] == 4
+    assert (s["jets"], s["small"], s["unknown"], s["arrivals"]) == (2, 2, 2, 6)
+    assert s["normal"] == 2 and s["change_pct"] == 0             # jets vs jets
+    assert {o["code"] for o in s["top_origins"]} == {"SEA"}      # where the jets came from
+    assert {m["group"] for m in out["moves"]} == {"bizjet", "prop", "unknown"}
+    assert out2["stats"]["jets"] == 2
     assert all(m["callsign"] == "" for m in out["moves"])        # no tail numbers kept
     text = formats.caption_options("lincoln", s, date(2026, 10, 30), date(2026, 11, 1))[0]["text"]
-    assert "4 private jets flew into Lincoln" in text and "vs 2 on a normal weekend" in text
+    assert "2 private jets flew into Lincoln" in text and "vs 2 on a normal weekend" in text
+    assert "Plus 2 small planes." in text
+
+
+def test_private_post_counts_jets_and_small_planes_apart(cfg):
+    from skybird import captions
+    from datetime import timedelta
+    raw = [
+        {"callsign": "N1JT", "icao24": "b00001", "estDepartureAirport": "KOMA", "estArrivalAirport": "KDEN", "firstSeen": 1, "lastSeen": 2},
+        {"callsign": "EJA9", "icao24": "b00002", "estDepartureAirport": "KMSP", "estArrivalAirport": "KOMA", "firstSeen": 3, "lastSeen": 4},
+        {"callsign": "N2PP", "icao24": "b00003", "estDepartureAirport": "KMLE", "estArrivalAirport": "KHSI", "firstSeen": 5, "lastSeen": 6},
+        {"callsign": "N3XX", "icao24": "b00004", "estDepartureAirport": "KCBF", "estArrivalAirport": "KDSM", "firstSeen": 7, "lastSeen": 8},
+        {"callsign": "UAL1", "icao24": "b00005", "estDepartureAirport": "KOMA", "estArrivalAirport": "KORD", "firstSeen": 9, "lastSeen": 10},
+    ]
+    info = {"b00001": {"cls": "jet", "family": "Citation"}, "b00003": {"cls": "prop", "family": "Cirrus SR22"}}
+    assert fl.private_icao24s(cfg, raw) == {"b00001", "b00002", "b00003", "b00004"}   # lookups skip airliners
+    st = fl.build_day(cfg, raw, info)["posts"]["private"]["stats"]
+    assert (st["jets"], st["small"], st["unknown"], st["flights"]) == (2, 1, 1, 4)
+    assert st["top_types"] == [{"name": "Citation", "count": 1}]
+    assert st["top_small_types"][0]["name"] == "Cirrus SR22"
+    opts = captions.build_options(cfg, "private", st, date(2026, 10, 31))
+    friendly = next(o for o in opts if o["id"] == "friendly")["text"]
+    assert "2 private jet takeoffs and landings" in friendly and "plus 1 by small planes" in friendly
+    # the trend: today's numbers, earlier days from the saved lists
+    folder = cfg.data_dir / "flights"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "2026-10-30.json").write_text(json.dumps({"flights": raw[:3]}))
+    week = fl.private_week(cfg, date(2026, 10, 31), st)
+    assert [d["label"] for d in week][-2:] == ["FRI", "SAT"]
+    assert week[-1]["jets"] == 2 and week[-1]["small"] == 1
+    assert week[-2]["jets"] is not None and week[0]["jets"] is None
 
 
 def _stats_file(cfg, post_date, posts):

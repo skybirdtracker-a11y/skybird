@@ -207,7 +207,7 @@ def weekend(cfg: Config, flight_day: date, today: dict) -> dict:
         raw = json.loads(p.read_text(encoding="utf-8"))["flights"]
     except (OSError, ValueError, KeyError):
         raise ValueError(f"no saved flight list for {sat}")
-    info = fl.aircraft_info(cfg, {f.get("icao24") for f in raw if f.get("icao24")}, None)
+    info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), None)
     sat_moves = fl.build_day(cfg, raw, info)["posts"]["private"]["moves"]
     moves = [m for m in sat_moves + today["posts"]["private"]["moves"] if m["dir"] == "arr"]
     if not moves:
@@ -215,6 +215,7 @@ def weekend(cfg: Config, flight_day: date, today: dict) -> dict:
     origins = Counter((m["other"]["code"], m["other"]["city"]) for m in moves if m["other"])
     n_sat = sum(1 for m in sat_moves if m["dir"] == "arr")
     s = {"arrivals": len(moves), "departures": 0, "flights": len(moves),
+         "jets": sum(1 for m in moves if m["group"] == "bizjet"), "small": sum(1 for m in moves if m["group"] == "prop"),
          "by_day": [{"label": "SAT", "count": n_sat}, {"label": "SUN", "count": len(moves) - n_sat}],
          "top_origins": [{"code": c, "city": city, "count": n} for (c, city), n in origins.most_common(5)],
          "cities_linked": len(origins),
@@ -228,7 +229,7 @@ def weekend(cfg: Config, flight_day: date, today: dict) -> dict:
                 far = {"code": m["other"]["code"], "city": m["other"]["city"], "miles": round(d)}
     if far:
         s["farthest"] = far
-    fams = Counter(m["family"] for m in moves if m["family"])
+    fams = Counter(m["family"] for m in moves if m["family"] and m["group"] == "bizjet")
     s["top_types"] = [{"name": n, "count": c} for n, c in fams.most_common(3)]
     return {"moves": moves, "stats": s}
 
@@ -345,13 +346,22 @@ def _lincoln_arrivals(cfg: Config, thu: date, sat: date, session) -> list[dict]:
     return raw
 
 
+def _group(f: dict, info: dict) -> str:
+    """bizjet (private jet), prop (small plane) or unknown (type not known yet)."""
+    cls = (info.get(f.get("icao24")) or {}).get("cls")
+    if cls == "jet" or (f.get("callsign") or "").strip().upper()[:3] in fl.PRIVATE_OPERATORS:
+        return "bizjet"
+    return "prop" if cls == "prop" else "unknown"
+
+
 def _private_jets(cfg: Config, raw: list[dict], info: dict) -> list[dict]:
+    """Private planes landing in Lincoln (jets and small planes; helicopters left out)."""
     airlines, mil, excl = fl._lists(cfg)
     out = []
     for f in raw:
         if fl.classify(f, airlines, mil, excl) != "private":
             continue
-        if (info.get(f.get("icao24")) or {}).get("cls") in ("heli", "prop"):
+        if (info.get(f.get("icao24")) or {}).get("cls") == "heli":
             continue
         dep = f.get("estDepartureAirport")
         if dep == LINCOLN:
@@ -379,38 +389,44 @@ def lincoln(cfg: Config, post_date: date, session=None, demo: bool = False) -> d
         normal = _lincoln_arrivals(cfg, quiet - timedelta(days=2), quiet, session)
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps({"game": game, "normal": normal, "quiet": quiet.isoformat()}), encoding="utf-8")
-    info = fl.aircraft_info(cfg, {f.get("icao24") for f in game + normal if f.get("icao24")},
-                            None if demo else session)
-    jets, usual = _private_jets(cfg, game, info), _private_jets(cfg, normal, info)
+    info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, game + normal), None if demo else session)
+    planes, usual = _private_jets(cfg, game, info), _private_jets(cfg, normal, info)
+    usual_jets = sum(1 for f in usual if _group(f, info) == "bizjet")
     hub = fl.place(LINCOLN)
     moves = []
-    for f in jets:
+    for f in planes:
         meta = info.get(f.get("icao24")) or {}
         moves.append({"dir": "arr", "metro": LINCOLN, "other": fl.place(f.get("estDepartureAirport")),
                       "metro_place": hub, "t": f.get("lastSeen"), "t0": f.get("firstSeen"), "t1": f.get("lastSeen"),
-                      "group": "bizjet", "kind": "private", "airline": None, "family": meta.get("family"), "callsign": ""})
-    by_day = Counter(datetime.fromtimestamp(m["t"], cfg.tz).strftime("%a").upper() for m in moves if m.get("t"))
-    origins = Counter((m["other"]["code"], m["other"]["city"]) for m in moves if m["other"])
-    s = {"arrivals": len(moves), "departures": 0, "flights": len(moves), "normal": len(usual),
+                      "group": _group(f, info), "kind": "private", "airline": None, "family": meta.get("family"),
+                      "callsign": ""})
+    jets = [m for m in moves if m["group"] == "bizjet"]
+    # the comparison is jets vs jets: small planes fly in and out of Lincoln every day
+    by_day = Counter(datetime.fromtimestamp(m["t"], cfg.tz).strftime("%a").upper() for m in jets if m.get("t"))
+    origins = Counter((m["other"]["code"], m["other"]["city"]) for m in jets if m["other"])
+    s = {"arrivals": len(moves), "departures": 0, "flights": len(moves), "normal": usual_jets,
+         "jets": len(jets), "small": sum(1 for m in moves if m["group"] == "prop"),
+         "unknown": sum(1 for m in moves if m["group"] == "unknown"),
          "normal_weekend": f"{quiet - timedelta(days=2):%b} {(quiet - timedelta(days=2)).day}–{quiet.day}",
          "by_day": [{"label": d, "count": by_day.get(d, 0)} for d in ("THU", "FRI", "SAT")],
          "top_origins": [{"code": c, "city": city, "count": n} for (c, city), n in origins.most_common(5)],
          "cities_linked": len(origins), "cutoff": "7 PM" if sat < date(2026, 11, 1) else "6 PM",
          "game_day": sat.isoformat()}
     s["top_destinations"] = s["top_origins"]
-    if usual:
-        s["change_pct"] = round(100 * (len(moves) - len(usual)) / len(usual))
+    if usual_jets:
+        s["change_pct"] = round(100 * (len(jets) - usual_jets) / usual_jets)
     far = None
-    for m in moves:
+    for m in jets:
         if m["other"]:
             d = fl.miles(m["other"], hub)
             if not far or d > far["miles"]:
                 far = {"code": m["other"]["code"], "city": m["other"]["city"], "miles": round(d)}
     if far:
         s["farthest"] = far
-    fams = Counter(m["family"] for m in moves if m["family"])
+    fams = Counter(m["family"] for m in jets if m["family"])
     s["top_types"] = [{"name": n, "count": c} for n, c in fams.most_common(3)]
-    log(cfg, f"Lincoln game weekend: {len(moves)} private jets in (normal weekend {len(usual)})")
+    log(cfg, f"Lincoln game weekend: {len(jets)} private jets in (normal weekend {usual_jets}), "
+             f"{s['small']} small planes, {s['unknown']} of unknown type")
     return {"moves": moves, "stats": s}
 
 
@@ -510,9 +526,10 @@ def caption_options(fmt: str, stats: dict, data_date: date, post_date: date) -> 
         top = (s.get("top_origins") or [{}])[0]
         far = (s.get("farthest") or {}).get("city")
         opts.append(("friendly", "Friendly",
-                     f"{s.get('arrivals', 0)} private jets flew into Omaha over the weekend. Most came from {top.get('city')} "
+                     f"{s.get('jets', s.get('arrivals', 0))} private jets"
+                     + (f" and {s['small']} small planes" if s.get("small") else "") + " flew into Omaha over the weekend. Most came from {top.get('city')} "
                      f"({top.get('count')})." + (f" Farthest trip in: {far}." if far else "") + " See you up there."))
-        opts.append(("deadpan", "Deadpan", f"{s.get('arrivals', 0)} private jets came to Omaha this weekend. Still no invitation. Roger, roger."))
+        opts.append(("deadpan", "Deadpan", f"{s.get('jets', s.get('arrivals', 0))} private jets came to Omaha this weekend. Still no invitation. Roger, roger."))
     elif fmt == "scoreboard":
         sb = {r["name"]: r["count"] for r in (s.get("scoreboard") or {}).get("rows", [])}
         line = (f"Eppley {sb.get('Eppley', 0)}, Millard {sb.get('Millard', 0)}, "
@@ -531,13 +548,14 @@ def caption_options(fmt: str, stats: dict, data_date: date, post_date: date) -> 
                      f"{s.get('busiest_day', 'One day')} was Omaha's busiest day in the sky this week, with "
                      f"{s.get('busiest_day_count', 0):,} takeoffs and landings. Did you fly?"))
     elif fmt == "lincoln":
-        n, normal = s.get("arrivals", 0), s.get("normal", 0)
+        n, normal = s.get("jets", s.get("arrivals", 0)), s.get("normal", 0)
         top = (s.get("top_origins") or [{}])[0].get("city")
         far = (s.get("farthest") or {}).get("city")
         vs = f", vs {normal} on a normal weekend" if normal else ""
         opts.append(("local_tie_in", "Local tie-in",
                      f"Game weekend in Lincoln 🏈 {n} private jets flew into Lincoln from Thursday through game day{vs}."
-                     + (f" Most came from {top}." if top else "") + (f" Farthest trip in: {far}." if far else "") + " GBR."))
+                     + (f" Most came from {top}." if top else "") + (f" Farthest trip in: {far}." if far else "")
+                     + (f" Plus {s['small']} small planes." if s.get("small") else "") + " GBR."))
         opts.append(("deadpan", "Deadpan", f"{n} private jets landed in Lincoln for the game. Ours is still in the shop. Roger, roger."))
         opts.append(("guess", "Guess first", "Guess before you watch: how many private jets flew into Lincoln for the game? 👇 Answer at the end."))
     cta = CTA[fmt]

@@ -40,22 +40,25 @@ def collect(cfg: Config, key: str, now: datetime, session=None) -> tuple[int, li
     from .publishers import buffer
     kw = {"session": session} if session else {}
     done, problems = 0, []
-    for back in range(COLLECT_DAYS, -1, -1):
+    for back in range(COLLECT_DAYS + 1):   # newest first, so this week's posts always get read
         day = now.date() - timedelta(days=back)
         st = load_state(cfg, day)
         if not st:
             continue
-        got = {}
+        got, gone = {}, set()
         for k, post in st["posts"].items():
             due = engine._ts(post.get("posted_at"))
             if not due or now < due + timedelta(hours=SETTLE_HOURS):
                 continue
             for plat, r in (post.get("results") or {}).items():
-                if not r.get("ok") or r.get("id") in (None, "", "dry-run"):
+                if not r.get("ok") or r.get("id") in (None, "", "dry-run") or r.get("gone"):
                     continue
                 try:
                     m = buffer.post_metrics(key, r["id"], **kw)
                 except Exception as e:
+                    if "not found" in str(e).lower():   # deleted in Buffer: skip it from now on
+                        gone.add((k, plat))
+                        continue
                     problems.append(f"{day} {post.get('title', k)} {plat}: {str(e)[:300]}")
                     if "rate limit" in str(e) or "rejected the API key" in str(e) or len(problems) >= 6:
                         return done, problems   # stop early instead of hammering Buffer
@@ -64,12 +67,14 @@ def collect(cfg: Config, key: str, now: datetime, session=None) -> tuple[int, li
                     time.sleep(PAUSE if not session else 0)
                 if m:
                     got[(k, plat)] = m
-        if got:
+        if got or gone:
             with locked(cfg):
                 fresh = load_state(cfg, day)
                 for (k, plat), m in got.items():
                     r = fresh["posts"][k]["results"][plat]
                     r["metrics"], r["metrics_at"] = m, now.isoformat(timespec="seconds")
+                for k, plat in gone:
+                    fresh["posts"][k]["results"][plat]["gone"] = True
                 save_state(cfg, day, fresh)
             done += len(got)
     return done, problems

@@ -260,3 +260,45 @@ def test_report_compares_posts_per_day(cfg):
     assert "| 2 | 7 |" in md and "| 4 | 7 |" in md and "| 1 | 6 |" in md   # 27 days: one 1-post day still to come
     assert "Most total views so far: **4 posts a day**" in md
     assert "| Wed |" in md
+
+
+def test_weights_run_winners_more_and_pause_losers(cfg):
+    from collections import Counter
+    from datetime import timedelta
+    def counts():
+        c = Counter()
+        for i in range(28):
+            c.update(formats.day_plan(cfg, date(2026, 10, 28) + timedelta(days=i)).values())
+        return c
+    base = counts()
+    cfg.raw["testing"]["weights"] = {"guess": 3, "firstlast": 0}
+    c = counts()
+    assert c["firstlast"] == 0 and base["firstlast"] > 0                 # paused
+    assert c["guess"] > base["guess"] and c["guess"] >= 2 * c["farthest"]   # runs about 3x as often
+
+
+def test_report_skips_deleted_posts_and_reads_newest_first(cfg, monkeypatch):
+    from datetime import timedelta
+    from skybird import report
+    from skybird.publishers import buffer
+    from skybird.state import load_state, save_state
+    now = datetime(2026, 11, 2, 8, 20, tzinfo=cfg.tz)
+    for i in range(1, 12):
+        d = now.date() - timedelta(days=i)
+        save_state(cfg, d, {"posts": {"commercial": {"title": "E", "posted_at": f"{d}T09:00:00-06:00",
+                                                      "results": {"tiktok": {"ok": True, "id": f"old{i}" if i > 8 else f"p{i}"}}}}})
+    asked = []
+
+    def metrics(key, pid, session=None):
+        asked.append(pid)
+        if pid.startswith("old"):
+            raise Exception(f"Buffer: Post not found for id: {pid}")
+        return {"views": 100}
+    monkeypatch.setattr(buffer, "post_metrics", metrics)
+    monkeypatch.setattr(report.time, "sleep", lambda s: None)
+    n, problems = report.collect(cfg, "K", now)
+    assert n == 8 and problems == [] and asked[0] == "p1"                 # newest first, deleted ones aren't problems
+    assert load_state(cfg, now.date() - timedelta(days=10))["posts"]["commercial"]["results"]["tiktok"]["gone"]
+    asked.clear()
+    report.collect(cfg, "K", now)
+    assert not any(p.startswith("old") for p in asked)                    # not asked again

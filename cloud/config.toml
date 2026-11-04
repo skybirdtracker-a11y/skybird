@@ -105,6 +105,17 @@ per_day = 2
 # day for each level. false = always post all 4 (with per_day concepts).
 volume = true
 
+# How often each concept runs compared with the others in its slot: 2 = about twice as
+# often, 0.5 = half as often, 0 = paused. Adjusted every few days from the analytics.
+[testing.weights]
+guess = 1
+farthest = 1
+firstlast = 1
+types = 1
+weekend = 1
+scoreboard = 1
+hours = 1
+
 # Fixed dates win over the rotation (and count toward the 2 a day).
 # lincoln = private jets into Lincoln for a Husker home game; post it the Sunday after.
 [formats]

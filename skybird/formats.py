@@ -79,6 +79,7 @@ def day_schedule(cfg: Config, post_date: date) -> dict:
     except ValueError:
         start = None
     pools = {k: [f for f in v if f in FORMATS] for k, v in (t.get("pools") or POOLS).items()}
+    weights = {k: float(v) for k, v in (t.get("weights") or {}).items()}
     on = bool(start) and t.get("enabled", True)
     volume = on and t.get("volume", False)
     used: Counter = Counter()
@@ -107,7 +108,10 @@ def day_schedule(cfg: Config, post_date: date) -> dict:
                 continue
             ok = [f for f in pools[slot] if ONLY_ON.get(f, d.strftime("%a")) == d.strftime("%a")]
             if ok:
-                plan[slot] = min(ok, key=lambda f: (used[f], pools[slot].index(f)))
+                # weight 2 = runs about twice as often; 0 = paused ([testing.weights])
+                ok = [f for f in ok if weights.get(f, 1) > 0]
+                if ok:
+                    plan[slot] = min(ok, key=lambda f: (used[f] / weights.get(f, 1), pools[slot].index(f)))
         running = [x for x in ALL_SLOTS if x in running]   # in the day's order
         return {"level": len(running), "running": running, "formats": plan}
 

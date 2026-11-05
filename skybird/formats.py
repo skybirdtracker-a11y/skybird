@@ -347,8 +347,16 @@ def record_fields(cfg: Config, flight_day: date, airports: list[dict]) -> None:
     path.write_text(json.dumps(hist, indent=1), encoding="utf-8")
 
 
+SCOREBOARD_ROWS = 5
+
+
 def scoreboard(cfg: Config, flight_day: date, all_stats: dict) -> dict:
     rows = [{"code": a["code"], "name": a["name"], "count": a["count"]} for a in all_stats.get("airports") or []]
+    if len(rows) > SCOREBOARD_ROWS:   # the board fits 5: the 4 busiest, the rest together
+        named = sorted((r for r in rows if r["code"] != "OTHER"), key=lambda r: -r["count"])
+        keep = named[:SCOREBOARD_ROWS - 1]
+        rest = sum(r["count"] for r in rows if r not in keep)
+        rows = keep + [{"code": "OTHER", "name": "Other fields", "count": rest}]
     try:
         hist = json.loads((cfg.data_dir / "daily_counts.json").read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):

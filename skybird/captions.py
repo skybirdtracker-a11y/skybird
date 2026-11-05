@@ -136,9 +136,14 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
     ev = events[0] if events else None
     ev_hook = (ev.get("caption_hook") or "").strip() if ev else ""
     names = list(cfg.metro.values())   # the city's airfields, in order
+    n_fields = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine",
+                10: "ten"}.get(len(names), str(len(names)))
+    shown = [a["name"] for a in stats.get("airports") or [] if a.get("code") != "OTHER"]
+    if len(names) > 4 and shown:   # many fields: name the ones on the map, then "other fields"
+        rest = any(a.get("code") == "OTHER" for a in stats.get("airports") or [])
+        names = shown + (["the metro's other fields"] if rest else [])
     field_list = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
     field_or = ", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0]
-    n_fields = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}.get(len(names), str(len(names)))
     small_txt = ""
     if slot_key == "private" and "jets" in stats:   # private jets and small planes are counted apart
         total = _n(stats.get("jets"))

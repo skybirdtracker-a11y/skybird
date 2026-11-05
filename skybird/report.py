@@ -471,9 +471,14 @@ def _hub_moves(cfg: Config, posts: dict) -> int | None:
     return None
 
 
+POST_COUNTS = "post_counts.json"
+
+
 def record_day(cfg: Config, post_date: date) -> dict:
-    """Keep the day's counts (cloud/data/<city>/daily_counts.json, 60 days): the videos and
-    their stats.json aren't kept between runs, the sample page and reports need the numbers."""
+    """Keep the day's counts by post date (cloud/data/<city>/post_counts.json, 60 days): the
+    videos and their stats.json aren't kept between runs, the sample page and reports need the
+    numbers. (daily_counts.json is a different file: per-flight-day history for the trend
+    lines, the scoreboard and Offutt; never written here.)"""
     import json
     try:
         st = json.loads(cfg.media_file(post_date, "stats.json").read_text(encoding="utf-8"))
@@ -485,7 +490,7 @@ def record_day(cfg: Config, post_date: date) -> dict:
            "hub_moves": _hub_moves(cfg, posts), "airline_departures": hub.get("departures"),
            "airline_arrivals": hub.get("arrivals"), "complete": bool(st.get("complete", True)),
            "opensky": st.get("opensky_requests", "")}
-    path = cfg.data_dir / "daily_counts.json"
+    path = cfg.data_dir / POST_COUNTS
     try:
         saved = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -500,7 +505,7 @@ def record_day(cfg: Config, post_date: date) -> dict:
 def daily_counts(cfg: Config) -> dict:
     import json
     try:
-        return json.loads((cfg.data_dir / "daily_counts.json").read_text(encoding="utf-8"))
+        return json.loads((cfg.data_dir / POST_COUNTS).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 

@@ -988,29 +988,31 @@ class Reel:
         top = max((r["count"] for r in rows), default=0)
         names = {"OFF": "Offutt · at least"}
         done = 4.0
+        step, box = (175, 155) if len(rows) <= 4 else (150, 136)   # 5 rows still clear the total line
         for fi in range(int(secs * FPS)):
             t = fi / FPS
             cv = self._board(t, "METRO SCOREBOARD", "Metro", "scoreboard.")
             for i, r in enumerate(rows):
-                y = 680 + i * 175
+                y = 680 + i * step
                 s = pop((t - 0.2 - i * 0.12) / 0.4)
                 if s <= 0:
                     continue
                 win = t >= done and r["count"] == top
-                cv.rbox(62, y, 956, 155, 26, NAVY if win else WHITE, z=10, alpha=min(1, s), shadow=not win)
-                cv.spaced(96, y + 58, r["code"], 26, ORANGE if win else BIRD, cv.f.mono, spacing=3, z=12)
-                cv.text(96, y + 118, names.get(r["code"], r["name"]), 44, WHITE if win else NAVY, cv.f.head, z=12)
+                cv.rbox(62, y, 956, box, 26, NAVY if win else WHITE, z=10, alpha=min(1, s), shadow=not win)
+                cv.spaced(96, y + 58 - (155 - box) // 3, r["code"], 26, ORANGE if win else BIRD, cv.f.mono, spacing=3, z=12)
+                cv.text(96, y + 118 - (155 - box) // 2, names.get(r["code"], r["name"]), 44, WHITE if win else NAVY, cv.f.head, z=12)
                 n = int(round(r["count"] * ease((t - 0.6 - i * 0.15) / 3.0)))
-                cv.text(990, y + 112, f"{n:,}", 96, ORANGE if win else NAVY, cv.f.head, ha="right", z=12)
+                cv.text(990, y + 112 - (155 - box) // 2, f"{n:,}", 96, ORANGE if win else NAVY, cv.f.head, ha="right", z=12)
                 if t >= done + 0.3 and sb.get("total"):
-                    cv.text(640, y + 118, f"{round(100 * r['count'] / sb['total'])}%", 30,
+                    cv.text(640, y + 58 - (155 - box) // 3, f"{round(100 * r['count'] / sb['total'])}%", 30,
                             MINT if win else MUTED, cv.f.mono, ha="right", z=12, alpha=min(1, (t - done - 0.3) / 0.4))
             if t >= done + 0.6:
                 a = min(1, (t - done - 0.6) / 0.4)
-                cv.text(62, 1450, f"{sb.get('total', 0):,} takeoffs and landings across the metro", 36, INK, cv.f.body, z=12, alpha=a)
+                ty = 1450 if len(rows) <= 4 else 1480
+                cv.text(62, ty, f"{sb.get('total', 0):,} takeoffs and landings across the metro", 36, INK, cv.f.body, z=12, alpha=a)
                 if sb.get("vs_last_week") is not None:
                     v = sb["vs_last_week"]
-                    cv.text(62, 1510, f"{'+' if v >= 0 else ''}{v}% vs the same day last week", 34, BIRD, cv.f.body, z=12, alpha=a)
+                    cv.text(62, ty + 60, f"{'+' if v >= 0 else ''}{v}% vs the same day last week", 34, BIRD, cv.f.body, z=12, alpha=a)
             self._finish(cv, t, write)
 
     def week_scene(self, write, secs: float = 7.0):

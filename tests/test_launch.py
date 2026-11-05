@@ -44,7 +44,7 @@ def test_kc_runs_in_every_workflow_and_stays_quiet(project):
 
 
 def day_counts(k, n, moves):
-    path = k.data_dir / "daily_counts.json"
+    path = k.data_dir / "post_counts.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     start = date(2026, 11, 6)
     path.write_text(json.dumps({(start + timedelta(days=i)).isoformat():
@@ -75,6 +75,11 @@ def test_record_day_keeps_the_hub_count(project):
     kci = next(a["count"] for a in day["posts"]["all"]["stats"]["airports"] if a["name"] == "KCI")
     assert row["hub_moves"] == kci and row["airline_departures"] == 9
     assert report.daily_counts(k)["2026-11-06"]["data_date"] == "2026-11-04"
+    # the per-flight-day history (trend lines, scoreboard, Offutt) lives in another file and is untouched
+    hist = k.data_dir / "daily_counts.json"
+    hist.write_text(json.dumps({"2026-11-06": {"private": {"jets": 4, "small": 2}, "fields": {"MCI": 9}}}))
+    report.record_day(k, date(2026, 11, 6))
+    assert json.loads(hist.read_text())["2026-11-06"]["private"] == {"jets": 4, "small": 2}
 
 
 def test_quiet_build_publishes_videos_and_sample_page(project, monkeypatch):

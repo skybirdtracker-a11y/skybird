@@ -39,8 +39,9 @@ def test_omaha_is_the_default_and_keeps_its_settings(project):
 
 def test_kansas_city_profile(project):
     k = cfg_for(project, "kc")
-    assert k.city_id == "kc" and k.hub == "KMCI" and set(k.metro) == {"KMCI", "KMKC", "KOJC"}
-    assert k.military_fields == [] and k.excluded == ["KSZL"]
+    assert k.city_id == "kc" and k.hub == "KMCI"
+    assert set(k.metro) == {"KMCI", "KMKC", "KOJC", "KIXD", "KLXT", "KGPH", "K3GV", "KK34", "K3EX"}   # KCI, Wheeler Downtown, all public metro fields
+    assert k.military_fields == [] and k.excluded == ["KSZL", "KFLV"]
     assert k.dry_run                                            # quiet build: never posts
     assert k.platform_enabled("tiktok") and not k.platform_enabled("facebook") and not k.platform_enabled("instagram")
     assert [s.key for s in k.slots] == ["commercial", "private", "all", "wrap", "rivalry"]
@@ -92,7 +93,9 @@ def test_kc_captions_tags_and_accounts(project):
     text = " ".join(o["text"] for o in captions.build_options(k, "commercial", st, date(2026, 11, 4)))
     assert "Eppley" not in text and "Omaha" not in text and "KCI" in text
     alltext = " ".join(o["text"] for o in captions.build_options(k, "all", day["posts"]["all"]["stats"], date(2026, 11, 4)))
-    assert "KCI, Downtown and Johnson County Exec" in alltext and "Offutt" not in alltext
+    assert "KCI, Downtown, Johnson County Exec" in alltext and "Offutt" not in alltext
+    assert "Gardner" not in alltext.split("Which field")[0] or "other fields" in alltext   # only the fields on the map are named
+    assert "nine airfields" in alltext
     tags = [h["tag"] for h in captions.hashtag_choices(k, "commercial", st)]
     assert "#SkyBirdKC" in tags and not any("Omaha" in t or "Eppley" in t for t in tags)
     assert captions.tiktok_priority(k, "commercial")[0] == "#SkyBirdKC"
@@ -213,3 +216,16 @@ def test_kc_event_file_follows_the_brand_rules(project):
     assert all(e["start"].weekday() in (0, 5, 6) for e in games)          # Sun/Mon (Week 18 may be Sat)
     concerts = [e for e in raw if "concert" in e["name"].lower()]
     assert concerts and all("(T-Mobile Center)" in e["name"] for e in concerts)   # by venue, never the artist
+
+
+def test_scoreboard_fits_many_fields(project):
+    """Kansas City has nine fields: the board shows the 4 busiest and the rest as Other fields."""
+    k = cfg_for(project, "kc")
+    stats = {"airports": [{"code": c, "name": c, "count": n} for c, n in
+                          [("MCI", 300), ("MKC", 40), ("OJC", 30), ("JCI", 25), ("LXT", 12), ("GPH", 9), ("OTHER", 6)]]}
+    sb = formats.scoreboard(k, date(2026, 11, 4), stats)
+    assert [r["code"] for r in sb["rows"]] == ["MCI", "MKC", "OJC", "JCI", "OTHER"]
+    assert sb["rows"][-1]["count"] == 12 + 9 + 6 and sb["total"] == 422
+    om = cfg_for(project)                                                  # Omaha's 4 fields: unchanged
+    four = {"airports": [{"code": c, "name": c, "count": n} for c, n in [("OMA", 180), ("MLE", 20), ("CBF", 9), ("OFF", 6)]]}
+    assert [r["code"] for r in formats.scoreboard(om, date(2026, 11, 4), four)["rows"]] == ["OMA", "MLE", "CBF", "OFF"]

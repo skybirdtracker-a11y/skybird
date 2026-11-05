@@ -43,16 +43,25 @@ def load_env_secrets(cfg: Config) -> list[str]:
 
 
 def connect_buffer(cfg: Config) -> dict:
-    """Find the Instagram / Facebook / TikTok channels on the Buffer account."""
+    """Omaha's Buffer channels: exactly the IDs in [buffer_channels], checked against the
+    account. Never picked by kind: the account also has Kansas City's TikTok."""
     from .publishers import buffer
     key = cfg.secrets["buffer_api_key"]
     orgs = buffer.organizations(key)
     if not orgs:
         raise SystemExit("Buffer accepted the key but found no account. Log in at buffer.com once.")
-    found = buffer.match_channels(buffer.channels(key, orgs[0]["id"]))
+    on_account = {c["id"]: c for c in buffer.channels(key, orgs[0]["id"])}
+    want = cfg.section("buffer_channels") or {}
+    found = {}
     for p in buffer.PLATFORMS:
-        if p in found:
-            cfg.secrets[f"buffer_channel_{p}"] = found[p]["id"]
+        cfg.secrets.pop(f"buffer_channel_{p}", None)
+        cid = str(want.get(p) or "").strip()
+        ch = on_account.get(cid)
+        if ch and str(ch.get("service", "")).lower().startswith(p):
+            cfg.secrets[f"buffer_channel_{p}"] = cid
+            found[p] = ch
+        elif cid:
+            log(cfg, f"Buffer channel for {p} ({cid}) isn't on the account or isn't a {p} channel; not posting there")
     return found
 
 

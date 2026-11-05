@@ -155,7 +155,9 @@ dashboard_url = ""       # e.g. "http://desktop-joshu:8787" (Tailscale name) or 
 
 # ---- Platforms ------------------------------------------------------------
 [instagram]
-enabled = true
+# Paused Nov 4, 2026 (Kansas City launch plan): Omaha posts to Facebook + TikTok only.
+# Instagram comes back when Omaha's numbers make a case for it: set true again.
+enabled = false
 share_to_feed = true              # Reel also shows on the profile grid
 graph_version = "v23.0"
 

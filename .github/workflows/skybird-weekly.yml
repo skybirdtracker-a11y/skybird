@@ -48,6 +48,12 @@ jobs:
       - name: Collect Buffer's numbers and write the report
         env:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          BUFFER_CHANNEL_OMAHA_FACEBOOK: ${{ secrets.BUFFER_CHANNEL_OMAHA_FACEBOOK }}
+          BUFFER_CHANNEL_OMAHA_TIKTOK: ${{ secrets.BUFFER_CHANNEL_OMAHA_TIKTOK }}
+          BUFFER_CHANNEL_OMAHA_INSTAGRAM: ${{ secrets.BUFFER_CHANNEL_OMAHA_INSTAGRAM }}
+          BUFFER_CHANNEL_KC_TIKTOK: ${{ secrets.BUFFER_CHANNEL_KC_TIKTOK }}
+          BUFFER_CHANNEL_KC_FACEBOOK: ${{ secrets.BUFFER_CHANNEL_KC_FACEBOOK }}
+          BUFFER_CHANNEL_KC_INSTAGRAM: ${{ secrets.BUFFER_CHANNEL_KC_INSTAGRAM }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python -m skybird --config cloud/config.toml --city ${{ matrix.city }} cloud-run --weekly-report

@@ -36,48 +36,130 @@ CTA_NAMES = {"follow": "Follow", "tag_friend": "Tag a friend", "save": "Save thi
 
 
 def collect(cfg: Config, key: str, now: datetime, session=None) -> tuple[int, list[str]]:
-    """Fetch Buffer's numbers for recent posts. Returns (posts updated, problems)."""
+    """Fetch Buffer's numbers for the last 14 days' posts: all of them in one or two
+    batched calls (one call per post only if Buffer can't be asked in a batch, and then
+    only as far as the day's Buffer budget allows). Returns (posts updated, problems)."""
     from .publishers import buffer
     kw = {"session": session} if session else {}
-    done, problems = 0, []
-    for back in range(COLLECT_DAYS + 1):   # newest first, so this week's posts always get read
+    wanted = {}   # post id -> [(day, slot, platform)]
+    for back in range(COLLECT_DAYS + 1):
         day = now.date() - timedelta(days=back)
         st = load_state(cfg, day)
         if not st:
             continue
-        got, gone = {}, set()
         for k, post in st["posts"].items():
             due = engine._ts(post.get("posted_at"))
             if not due or now < due + timedelta(hours=SETTLE_HOURS):
                 continue
             for plat, r in (post.get("results") or {}).items():
-                if not r.get("ok") or r.get("id") in (None, "", "dry-run") or r.get("gone"):
-                    continue
+                if r.get("ok") and r.get("id") not in (None, "", "dry-run") and not r.get("gone"):
+                    wanted.setdefault(r["id"], []).append((day, k, plat))
+    if not wanted:
+        return 0, []
+    problems: list[str] = []
+    with buffer.purpose("metrics"):
+        try:
+            got, gone, problems = buffer.many_metrics(key, list(wanted), **kw)
+        except Exception as e:
+            if "Buffer limit" in str(e) or "kept for scheduling" in str(e) or "rate window" in str(e) \
+                    or "rejected the API key" in str(e):
+                return 0, [str(e)[:300]]
+            got, gone = {}, set()   # no batched reads: one at a time, newest first, within the budget
+            for pid in list(wanted)[:20]:
                 try:
-                    m = buffer.post_metrics(key, r["id"], **kw)
-                except Exception as e:
-                    if "not found" in str(e).lower():   # deleted in Buffer: skip it from now on
-                        gone.add((k, plat))
+                    m = buffer.post_metrics(key, pid, **kw)
+                except Exception as e2:
+                    if "not found" in str(e2).lower():
+                        gone.add(pid)
                         continue
-                    problems.append(f"{day} {post.get('title', k)} {plat}: {str(e)[:300]}")
-                    if "rate limit" in str(e) or "rejected the API key" in str(e) or len(problems) >= 6:
-                        return done, problems   # stop early instead of hammering Buffer
+                    problems.append(f"{wanted[pid][0][0]} {wanted[pid][0][1]} {wanted[pid][0][2]}: {str(e2)[:300]}")
+                    if "rate limit" in str(e2) or "Buffer limit" in str(e2) or "kept for" in str(e2) or len(problems) >= 6:
+                        break
                     continue
                 finally:
                     time.sleep(PAUSE if not session else 0)
                 if m:
-                    got[(k, plat)] = m
-        if got or gone:
-            with locked(cfg):
-                fresh = load_state(cfg, day)
-                for (k, plat), m in got.items():
-                    r = fresh["posts"][k]["results"][plat]
+                    got[pid] = m
+    by_day: dict = {}
+    for pid, where in wanted.items():
+        for day, k, plat in where:
+            if pid in got or pid in gone:
+                by_day.setdefault(day, []).append((k, plat, got.get(pid)))
+    for day, items in by_day.items():
+        with locked(cfg):
+            fresh = load_state(cfg, day)
+            for k, plat, m in items:
+                r = fresh["posts"][k]["results"][plat]
+                if m is None:
+                    r["gone"] = True   # deleted in Buffer: skip it from now on
+                else:
                     r["metrics"], r["metrics_at"] = m, now.isoformat(timespec="seconds")
-                for k, plat in gone:
-                    fresh["posts"][k]["results"][plat]["gone"] = True
-                save_state(cfg, day, fresh)
-            done += len(got)
-    return done, problems
+            save_state(cfg, day, fresh)
+    return len(got), problems
+
+
+def daily_numbers(cfg: Config, now: datetime, session=None) -> tuple[int, list[str]]:
+    """Buffer's numbers once a day per city: every recent post (collect) plus each of the
+    city's channels' totals for the last 7 days (Buffer's aggregated numbers, one call per
+    channel), saved in cloud/data/<city>/channel_numbers.json for the reports."""
+    import json
+    from .publishers import buffer
+    mark = cfg.data_dir / "numbers_day.txt"
+    today = now.date().isoformat()
+    if mark.exists() and mark.read_text().strip() == today:
+        return 0, []
+    key = cfg.secrets.get("buffer_api_key")
+    if not key:
+        return 0, ["no Buffer API key"]
+    n, problems = collect(cfg, key, now, session)
+    chans = {p: cfg.secrets[f"buffer_channel_{p}"] for p in ("facebook", "tiktok", "instagram")
+             if cfg.secrets.get(f"buffer_channel_{p}")}
+    org = ""
+    try:
+        org = json.loads((cfg.shared_dir / "buffer_channels.json").read_text(encoding="utf-8")).get("org_id", "")
+    except (OSError, ValueError):
+        pass
+    path = cfg.data_dir / "channel_numbers.json"
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    kw = {"session": session} if session else {}
+    if org and chans:
+        start = now - timedelta(days=7)
+        with buffer.purpose("metrics"):
+            for plat, cid in chans.items():
+                try:
+                    saved.setdefault(today, {})[plat] = buffer.aggregated(key, org, [cid], start, now, **kw)
+                except Exception as e:
+                    problems.append(f"{plat} channel totals: {str(e)[:200]}")
+                    if "Buffer limit" in str(e) or "kept for" in str(e) or "no aggregated" in str(e):
+                        break
+    if saved:
+        keep = sorted(saved)[-60:]
+        path.write_text(json.dumps({k: saved[k] for k in keep}, indent=1), encoding="utf-8")
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(today)
+    return n, problems
+
+
+def buffer_table(cfg: Config) -> list[str]:
+    """Buffer calls per day (all cities; this city's by purpose)."""
+    from .buffer_ledger import BufferLedger
+    lg = BufferLedger(cfg)
+    days = lg.summary(7)
+    if not days:
+        return []
+    lines = ["## Buffer use (last 7 days)", "",
+             f"| Day | {cfg.city_name} | Scheduling | Checks | Numbers | Setup | All cities |",
+             "|---|---:|---:|---:|---:|---:|---:|"]
+    for d in days:
+        mine = d.get("cities", {}).get(cfg.city_id, {})
+        lines.append(f"| {d['day']} | {sum(mine.values())} | {mine.get('post', 0)} | {mine.get('check', 0)} | "
+                     f"{mine.get('metrics', 0)} | {mine.get('setup', 0) + mine.get('other', 0)} | {d.get('total', 0)} |")
+    lines += ["", f"Limit: {lg.caps['daily_calls']} Buffer calls a day for all cities; the last "
+              f"{lg.caps['keep_for_posting']} are kept for scheduling posts.", ""]
+    return lines
 
 
 def rows(cfg: Config, now: datetime) -> list[dict]:
@@ -254,6 +336,7 @@ def build(cfg: Config, now: datetime) -> dict:
             winners.append(f"{name}: {top[0][0]} leads ({top[0][2]} vs {top[-1][2]} for {top[-1][0]})")
     lines += volume_tables(rs)
     lines += opensky_table(cfg)
+    lines += buffer_table(cfg)
     ranked = sorted((r for r in week if r["index"] is not None), key=lambda r: -r["index"])
     if ranked:
         lines += ["## Best and worst this week", "", "| Post | Platform | Views | Index |", "|---|---|---:|---:|"]
@@ -324,7 +407,17 @@ def run(cfg: Config, now: datetime | None = None, session=None) -> dict:
     if os.environ.get("NTFY_TOPIC", "").strip():
         cfg.raw.setdefault("notify", {})["ntfy_topic"] = os.environ["NTFY_TOPIC"].strip()
     key = cfg.secrets.get("buffer_api_key")
-    n, problems = collect(cfg, key, now, session) if key else (0, ["no Buffer API key"])
+    if key:
+        from . import buffer_ledger
+        from .cloud import connect_buffer
+        buffer_ledger.use(cfg)
+        try:
+            connect_buffer(cfg)   # this city's own channels, for the channel totals
+        except Exception as e:
+            print(f"Couldn't check the Buffer channels: {e}")
+        n, problems = daily_numbers(cfg, now, session)   # already read today: uses what was saved
+    else:
+        n, problems = 0, ["no Buffer API key"]
     rep = build(cfg, now)
     md = rep["markdown"]
     if problems:

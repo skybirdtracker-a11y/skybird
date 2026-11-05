@@ -189,6 +189,21 @@ ntfy_topic = ""          # e.g. "skybird-omaha-7q4m2" (make it hard to guess; an
 dashboard_url = ""       # e.g. "http://desktop-joshu:8787" (Tailscale name) or "http://192.168.1.20:8787"
 
 # ---- Platforms ------------------------------------------------------------
+[buffer]
+# Buffer's free plan: 3 channels and 10 posts waiting at a time. Each post goes into
+# Buffer about schedule_ahead_hours before its time (the hourly check run does it), so
+# only a few wait in Buffer at once. Set just_in_time = false to put the whole day in at
+# the daily run instead (the old way).
+just_in_time = true
+schedule_ahead_hours = 2.5
+max_scheduled = 10
+# Buffer API calls, all cities together. Checks, numbers and setup stop while the last
+# keep_for_posting calls are left; under backoff_pct of a Buffer rate window left, only
+# scheduling goes ahead until it resets.
+daily_calls = 60
+keep_for_posting = 20
+backoff_pct = 20
+
 [instagram]
 # Paused Nov 4, 2026 (Kansas City launch plan): Omaha posts to Facebook + TikTok only.
 # Instagram comes back when Omaha's numbers make a case for it: set true again.

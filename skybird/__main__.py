@@ -61,7 +61,8 @@ def main(argv=None):
     p.add_argument("--at", default="", help="post time HH:MM for --only posts (default: their usual time)")
     p.add_argument("--check-hosts", action="store_true", help="only test which video hosts accept uploads")
     p.add_argument("--test-notify", action="store_true", help="only send a test phone notification")
-    p.add_argument("--check-posts", action="store_true", help="only ask Buffer whether today's posts went out")
+    p.add_argument("--check-posts", action="store_true", help="only put due posts into Buffer and check earlier ones went out")
+    p.add_argument("--connect", action="store_true", help="only look up the Buffer channels again and show which secret each belongs in")
     p.add_argument("--weekly-report", action="store_true", help="only collect Buffer's numbers and write the weekly report")
     p.add_argument("--check-opensky", action="store_true", help="only send OpenSky one arrival fill-in request")
     p.add_argument("--probe-board", action="store_true", help="only look at Eppley's arrivals/departures page")
@@ -99,6 +100,10 @@ def main(argv=None):
         if a.weekly_report:
             from .report import run as weekly_report
             weekly_report(cfg)
+            return
+        if a.connect:
+            from .cloud import print_channels
+            print_channels(cfg)
             return
         if a.check_posts:
             from .cloud import check_posts

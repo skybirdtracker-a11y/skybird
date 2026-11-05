@@ -38,23 +38,80 @@ query GetChannels($input: ChannelsInput!) {
 }"""
 
 
-def gql(api_key: str, query: str, variables: dict | None = None, session=requests) -> dict:
+def gql(api_key: str, query: str, variables: dict | None = None, session=requests, partial: bool = False) -> dict:
+    """One Buffer API call. Counted by LEDGER (when set) and refused before it's sent
+    if today's Buffer budget doesn't allow it. `partial`: return {"data", "errors"}
+    instead of raising when only some fields failed (batched reads)."""
+    if LEDGER is not None:
+        LEDGER.spend(PURPOSE[0])
     r = session.post(API, json={"query": query, "variables": variables or {}},
                      headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                      timeout=60)
     try:
         body = r.json()
     except ValueError:
+        body = None
+    if LEDGER is not None:
+        LEDGER.note(getattr(r, "headers", None) or {}, body if isinstance(body, dict) else {}, r.status_code)
+    if body is None:
         raise PublishError(f"Buffer returned HTTP {r.status_code}: {r.text[:300]}")
     if r.status_code == 401 or r.status_code == 403:
         raise PublishError("Buffer rejected the API key. Create a new one in Buffer → Settings → API and run buffer-setup again.")
     if r.status_code == 429:
         raise PublishError("Buffer rate limit reached. Wait a few minutes; nothing was retried automatically.")
+    if partial and body.get("data"):
+        return {"data": body.get("data") or {}, "errors": body.get("errors") or []}
     if body.get("errors"):
         raise PublishError("Buffer: " + "; ".join(e.get("message", str(e)) for e in body["errors"]))
     if r.status_code >= 400:
         raise PublishError(f"Buffer returned HTTP {r.status_code}: {body}")
     return body.get("data") or {}
+
+
+# ---- the daily Buffer budget ---------------------------------------------------------
+# Every call SkyBird makes is counted in a ledger shared by all cities and runs
+# (cloud/data/buffer_ledger.json, set up by cloud.py). It refuses a call before it's sent:
+#   - more than [buffer] daily_calls (60) a day,
+#   - checks and numbers may not use the last keep_for_posting (20): scheduling comes first,
+#   - when Buffer says under backoff_pct (20%) of a rate window is left, only scheduling
+#     goes ahead until that window resets.
+LEDGER = None
+PURPOSE = ["other"]   # what the calls are for right now: post, check, metrics, setup, other
+
+
+class purpose:
+    """with buffer.purpose("metrics"): ... (labels the calls for the ledger)"""
+    def __init__(self, what: str):
+        self.what = what
+
+    def __enter__(self):
+        self.prev = PURPOSE[0]
+        PURPOSE[0] = self.what
+
+    def __exit__(self, *exc):
+        PURPOSE[0] = self.prev
+
+
+def rate_windows(headers, body: dict) -> list[dict]:
+    """Buffer's rate-limit windows from an answer: [{limit, remaining, reset_seconds}].
+    Read from the response's extensions (rateLimit) or the usual RateLimit headers."""
+    out = []
+    ext = (body or {}).get("extensions") or {}
+    raw = ext.get("rateLimit") or ext.get("rateLimits") or []
+    for w in raw if isinstance(raw, list) else [raw]:
+        if isinstance(w, dict) and isinstance(w.get("remaining"), (int, float)):
+            out.append({"limit": w.get("limit") or w.get("max") or w.get("cost"), "remaining": w["remaining"],
+                        "reset_seconds": w.get("resetSeconds") or w.get("reset_seconds") or w.get("reset")})
+    h = {str(k).lower(): v for k, v in dict(headers or {}).items()}
+    for pre in ("ratelimit-", "x-ratelimit-", "x-rate-limit-"):
+        rem, lim = h.get(pre + "remaining"), h.get(pre + "limit")
+        if rem is not None and str(rem).strip().isdigit():
+            lim = str(lim).split(",")[0].split(";")[0].strip() if lim is not None else ""
+            reset = str(h.get(pre + "reset", "")).strip()
+            out.append({"limit": int(lim) if lim.isdigit() else None, "remaining": int(str(rem).strip()),
+                        "reset_seconds": int(reset) if reset.isdigit() else None})
+            break
+    return out
 
 
 # ---- setup ------------------------------------------------------------------------
@@ -76,6 +133,12 @@ def match_channels(chs: list[dict]) -> dict[str, dict]:
             if svc.startswith(p) and p not in out:
                 out[p] = ch
     return out
+
+
+
+def service_of(ch: dict) -> str:
+    svc = str(ch.get("service", "")).lower()
+    return next((p for p in PLATFORMS if svc.startswith(p)), svc)
 
 
 # ---- hosting ----------------------------------------------------------------------
@@ -260,8 +323,8 @@ def _type(api_key: str, name: str, session) -> dict:
 def post_shape(api_key: str, session=requests) -> dict | None:
     """{"arg": 'input: {id: %s}', "fields": "id status ...", "metrics": field or ""}, or
     None if Buffer won't describe itself (then the fixed guesses below are used)."""
-    if api_key in _SHAPE:
-        return _SHAPE[api_key]
+    if "post" in _SHAPE:
+        return _SHAPE["post"]
     try:
         query = _type(api_key, "Query", session)
         field = next((f for f in query.get("fields") or [] if f["name"] == "post"), None)
@@ -293,12 +356,13 @@ def post_shape(api_key: str, session=requests) -> dict | None:
                         and not any(a["type"].get("kind") == "NON_NULL" for a in g.get("args") or [])]
                 if subs:
                     metrics = f"{f['name']} {{ {' '.join(subs)} }}"
-        _SHAPE[api_key] = {"arg": arg, "fields": " ".join(fields or ["id"]), "metrics": metrics}
+        _SHAPE["post"] = {"arg": arg, "fields": " ".join(fields or ["id"]), "metrics": metrics}
+        save_shapes()
     except PublishError as e:
         if _fatal(e):
             raise
         return None
-    return _SHAPE[api_key]
+    return _SHAPE["post"]
 
 
 def _read_post(api_key: str, post_id: str, guesses: tuple[str, ...], want_metrics: bool, session) -> tuple[dict | None, str]:
@@ -327,6 +391,103 @@ def post_metrics(api_key: str, post_id: str, session=requests) -> dict:
     """{"views": .., "likes": .., ...} for a post Buffer sent; {} if it has no numbers yet."""
     post, field = _read_post(api_key, post_id, POST_QUERIES, True, session)
     return _metrics_of(post or {}, field)
+
+
+def many_metrics(api_key: str, post_ids: list[str], session=requests, per_call: int = 40) -> tuple[dict, set, list]:
+    """Numbers for many posts in as few calls as possible: up to `per_call` posts per
+    request (one aliased query). Returns ({post_id: metrics}, {ids Buffer no longer has}, problems)."""
+    import json
+    shape = post_shape(api_key, session)
+    if not shape or not shape["metrics"]:
+        raise PublishError("Buffer didn't describe where a post's numbers are; can't read them in one go")
+    field = shape["metrics"].split(" ", 1)[0]
+    got, gone, problems = {}, set(), []
+    for i in range(0, len(post_ids), per_call):
+        chunk = post_ids[i:i + per_call]
+        parts = [f"p{n}: post({shape['arg'] % json.dumps(pid)}) {{ id {shape['metrics']} }}" for n, pid in enumerate(chunk)]
+        ans = gql(api_key, "query { " + " ".join(parts) + " }", session=session, partial=True)
+        data, errors = (ans.get("data"), ans.get("errors")) if "errors" in ans and "data" in ans else (ans, [])
+        missing = {e.get("path", [None])[0] for e in errors if "not found" in str(e.get("message", "")).lower()}
+        for n, pid in enumerate(chunk):
+            p = (data or {}).get(f"p{n}")
+            if p:
+                m = _metrics_of(p, field)
+                if m:
+                    got[pid] = m
+            elif f"p{n}" in missing:
+                gone.add(pid)
+        problems += [str(e.get("message", e))[:200] for e in errors
+                     if "not found" not in str(e.get("message", "")).lower()][:3]
+    return got, gone, problems
+
+
+AGG_KEYS = {"organizationid": "org", "channelids": "channels", "startdatetime": "start", "enddatetime": "end",
+            "start": "start", "end": "end", "from": "start", "to": "end"}
+
+
+def aggregated(api_key: str, org_id: str, channel_ids: list[str], start: datetime, end: datetime,
+               session=requests) -> dict:
+    """Buffer's aggregated numbers for some channels over a date range (one call, plus a
+    one-time look at the API's shape): {"posts": n, "views": .., "likes": .., ...}."""
+    vals = {"org": org_id, "channels": channel_ids,
+            "start": start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "end": end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    shape = _SHAPE.get("aggregated")
+    if shape is None:
+        q = _type(api_key, "Query", session)
+        f = next((x for x in q.get("fields") or [] if "aggregat" in x["name"].lower()), None)
+        shape = {}
+        if f:
+            args = []
+            for a in f.get("args") or []:
+                kind, tname = _named(a["type"])
+                if kind == "INPUT_OBJECT":
+                    inner = [x["name"] for x in _type(api_key, tname, session).get("inputFields") or []]
+                    args.append((a["name"], {n: AGG_KEYS[n.lower()] for n in inner if n.lower() in AGG_KEYS}))
+                elif a["name"].lower() in AGG_KEYS:
+                    args.append((a["name"], AGG_KEYS[a["name"].lower()]))
+            subs = [g["name"] for g in _type(api_key, _named(f["type"])[1], session).get("fields") or []
+                    if _named(g["type"])[0] in ("SCALAR", "ENUM")]
+            shape = {"field": f["name"], "args": args, "fields": subs}
+        _SHAPE["aggregated"] = shape
+        save_shapes()
+    if not shape:
+        raise PublishError("Buffer has no aggregated numbers query")
+    import json
+
+    def lit(v):
+        return json.dumps(v)
+    parts = []
+    for name, spec in shape["args"]:
+        if isinstance(spec, dict):
+            parts.append(f"{name}: {{" + ", ".join(f"{k}: {lit(vals[v])}" for k, v in spec.items()) + "}")
+        else:
+            parts.append(f"{name}: {lit(vals[spec])}")
+    q = f"query {{ {shape['field']}({', '.join(parts)}) {{ {' '.join(shape['fields']) or '__typename'} }} }}"
+    raw = gql(api_key, q, session=session).get(shape["field"]) or {}
+    out = _metrics_of({"m": {k: v for k, v in raw.items() if k != "postCount"}}, "m")
+    if isinstance(raw.get("postCount"), (int, float)):
+        out["posts"] = raw["postCount"]
+    return out
+
+
+SHAPES_FILE = None   # set by cloud.py: Buffer's API shape, remembered between runs (saves calls)
+
+
+def load_shapes() -> None:
+    import json
+    if SHAPES_FILE and SHAPES_FILE.exists():
+        try:
+            _SHAPE.update(json.loads(SHAPES_FILE.read_text(encoding="utf-8")))
+        except ValueError:
+            pass
+
+
+def save_shapes() -> None:
+    import json
+    if SHAPES_FILE:
+        SHAPES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SHAPES_FILE.write_text(json.dumps({k: v for k, v in _SHAPE.items() if not k.startswith("key:")}))
 
 
 # Used only if Buffer won't describe its API (see post_shape).
@@ -374,7 +535,8 @@ def _create(api_key: str, channel_id: str, caption: str, video_url: str, platfor
         if meta:
             inp["metadata"] = meta
         try:
-            data = gql(api_key, CREATE_POST, {"input": inp}, session=session)
+            with purpose("post"):
+                data = gql(api_key, CREATE_POST, {"input": inp}, session=session)
         except PublishError as e:
             if any(w in str(e) for w in SCHEMA_WORDS):
                 last = e
@@ -398,7 +560,7 @@ def post(video: Path, captions: dict[str, str], secrets: dict,
     key = secrets.get("buffer_api_key")
     if not key:
         raise PublishError("Buffer isn't connected (run: python -m skybird buffer-setup)")
-    if not video.exists():
+    if not video_url and not video.exists():
         raise PublishError(f"Video not found: {video}")
     s = session or requests.Session()
     # Buffer does NOT keep its own copy of a scheduled video: it fetches the link again

@@ -121,6 +121,12 @@ jobs:
           OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
           OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          BUFFER_CHANNEL_OMAHA_FACEBOOK: ${{ secrets.BUFFER_CHANNEL_OMAHA_FACEBOOK }}
+          BUFFER_CHANNEL_OMAHA_TIKTOK: ${{ secrets.BUFFER_CHANNEL_OMAHA_TIKTOK }}
+          BUFFER_CHANNEL_OMAHA_INSTAGRAM: ${{ secrets.BUFFER_CHANNEL_OMAHA_INSTAGRAM }}
+          BUFFER_CHANNEL_KC_TIKTOK: ${{ secrets.BUFFER_CHANNEL_KC_TIKTOK }}
+          BUFFER_CHANNEL_KC_FACEBOOK: ${{ secrets.BUFFER_CHANNEL_KC_FACEBOOK }}
+          BUFFER_CHANNEL_KC_INSTAGRAM: ${{ secrets.BUFFER_CHANNEL_KC_INSTAGRAM }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           GITHUB_TOKEN: ${{ github.token }}
           # a run you start by hand may use the shared OpenSky reserve

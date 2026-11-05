@@ -27,7 +27,7 @@ from .config import Config, city_ids
 
 CATEGORIES = ("lists", "fill_in", "types", "backfill")
 NAMES = {"lists": "flight lists", "fill_in": "arrival fill-in", "types": "aircraft types", "backfill": "backfill"}
-DEFAULTS = {"total": 3999, "per_city": 1600, "lists": 40, "fill_in": 600, "types": 400, "backfill": 60,
+DEFAULTS = {"credits_per_city": 1800, "total": 3999, "per_city": 1600, "lists": 40, "fill_in": 600, "types": 400, "backfill": 60,
             "low_remaining": 400, "critical_remaining": 100, "alert_pct": 80, "keep_for_lists": 40}
 ACCOUNT_LIMIT = 4000   # the owner's OpenSky allowance per day: the total cap may never go above it
 
@@ -105,6 +105,13 @@ class Ledger:
             raise BudgetError(f"{self.cfg.city_name}'s daily OpenSky limit ({c['per_city']}) is reached")
         if d["total"] >= c["total"]:
             raise BudgetError(f"SkyBird's daily OpenSky limit ({c['total']}, all cities) is reached")
+        # OpenSky's allowance is in credits (a request costs ~27 of them): each city's credits,
+        # measured from OpenSky's own count, are capped too. Flight lists are never held back by it.
+        cap = int(self.cfg.city.get("opensky_credits", c["credits_per_city"])) if self.cfg.city else int(c["credits_per_city"])
+        used = (d.get("credits") or {}).get(self.city, 0)
+        if cat != "lists" and used >= cap:
+            raise BudgetError(f"{self.cfg.city_name} used {used:,} OpenSky credits today (its limit is {cap:,}): "
+                              f"{NAMES[cat]} stop so the other city keeps enough")
         if cat != "lists":   # never eat into the flight lists another city still needs today
             waiting = [x for x in city_ids(self.cfg.root) if x != self.city and x not in d.get("lists_done", [])]
             if d["total"] + 1 > c["total"] - int(c["keep_for_lists"]) * len(waiting):

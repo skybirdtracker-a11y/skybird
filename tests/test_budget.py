@@ -232,3 +232,16 @@ def test_kc_main_fields_first_others_only_with_credits_to_spare(project, monkeyp
     budget.Ledger(k).note_headers({"X-Rate-Limit-Remaining": "3000"})       # plenty: every field
     fl.fetch_opensky(k, date(2026, 11, 4), Session())
     assert {"KIXD", "K3EX"} <= set(asked) and fl.SKIPPED_FIELDS == []
+
+
+def test_a_city_stops_lookups_at_its_credit_share(project, monkeypatch):
+    """Nov 5: Kansas City's fill-in used ~3,300 credits and left Omaha's next run 40. Each city's
+    credits (OpenSky's own count) are now capped; flight lists still go through."""
+    monkeypatch.setattr("skybird.notify.send", lambda *a, **k: None)
+    kc = ledger(project, "kc")
+    kc.note_headers({"X-Rate-Limit-Remaining": "4000"})
+    kc.note_headers({"X-Rate-Limit-Remaining": "2190"})                 # 1,810 credits used by KC
+    with pytest.raises(budget.BudgetError, match="credits"):
+        kc.spend("fill_in")
+    kc.spend("lists")
+    ledger(project).spend("fill_in")                                    # Omaha's share is untouched

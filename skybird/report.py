@@ -212,6 +212,10 @@ def build(cfg: Config, now: datetime) -> dict:
             pr = [r for r in week if r["platform"] == p]
             lines.append(f"| {p.title()} | {len(pr)} | {tot(pr, 'views'):,} | {sum(r['interactions'] for r in pr):,} |")
         lines.append("")
+    from .config import PLATFORMS
+    paused = [p for p in PLATFORMS if not cfg.platform_enabled(p)]
+    if paused:
+        lines += [", ".join(f"{'TikTok' if p == 'tiktok' else p.title()}: paused" for p in paused), ""]
     tables = [("Post type", "format", SLOT_NAMES), ("Caption style", "style", STYLE_NAMES),
               ("Call to action", "cta", CTA_NAMES), ("@tags", "tagged", None), ("Day of week", "weekday", None)]
     winners = []

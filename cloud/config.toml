@@ -153,6 +153,7 @@ hours = 1
 [opensky_budget]
 total = 3999
 per_city = 1600
+credits_per_city = 1800   # OpenSky counts credits (~27 per request): each city's share; flight lists always go
 lists = 40          # each city's core flight lists (one per airport and direction)
 fill_in = 600       # arrival fill-in lookups
 types = 400         # aircraft-type lookups (the cache is shared, so repeat planes cost nothing)

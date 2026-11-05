@@ -78,7 +78,7 @@ def _token(cfg: Config, s) -> str | None:
         return None
     if sec.get("_opensky_token") and sec.get("_opensky_token_exp", 0) > time.time() + 60:
         return sec["_opensky_token"]
-    USED["login"] = USED.get("login", 0) + 1
+    _spend("login", cfg)
     r = _call(s.post, TOKEN_URL, "the login server",
               data={"grant_type": "client_credentials", "client_id": cid, "client_secret": csec})
     if r.status_code != 200:
@@ -92,17 +92,32 @@ def _token(cfg: Config, s) -> str | None:
 NET_WAITS = (15, 45, 90)  # seconds between retries when OpenSky doesn't answer
 
 
-# Every OpenSky request this run makes is counted here, and there's a hard budget so a
-# run can never use up the account's daily allowance (the morning run needs it).
-MAX_REQUESTS = 260
+# Every OpenSky request is counted twice: per run here (for the run's notes) and per day,
+# city and category in the shared ledger (skybird/budget.py), which enforces the limits.
 _HISTORY = {"on": False}   # set while backfilling Offutt's 7-day history (for the count)
 USED: dict[str, int] = {}
+LEDGER_CAT = {"lists": "lists", "login": "lists", "aircraft": "fill_in", "metadata": "types", "history": "backfill"}
 
 
-def _spend(kind: str) -> None:
-    if sum(USED.values()) >= MAX_REQUESTS:
-        raise DataError(f"SkyBird's own limit of {MAX_REQUESTS} OpenSky requests per run was reached")
+def _spend(kind: str, cfg: Config | None = None) -> None:
+    if cfg is not None:
+        from .budget import BudgetError, ledger
+        try:
+            ledger(cfg).spend(LEDGER_CAT[kind])
+        except BudgetError as e:
+            raise DataError(str(e))
     USED[kind] = USED.get(kind, 0) + 1
+
+
+def _note(cfg: Config | None, r) -> None:
+    """Keep OpenSky's own count of what's left (and a 429's reset time) in the ledger."""
+    if cfg is None:
+        return
+    from .budget import ledger
+    if r.status_code == 429:
+        ledger(cfg).note_429(r.headers.get("X-Rate-Limit-Retry-After-Seconds"))
+    else:
+        ledger(cfg).note_headers(r.headers)
 
 
 def requests_used() -> str:
@@ -131,8 +146,9 @@ def _get(cfg: Config, s, path: str, params: dict) -> list:
     tok = _token(cfg, s)
     headers = {"Authorization": f"Bearer {tok}"} if tok else {}
     for attempt in range(3):
-        _spend("aircraft" if path.startswith("/flights/aircraft") else "history" if _HISTORY["on"] else "lists")
+        _spend("aircraft" if path.startswith("/flights/aircraft") else "history" if _HISTORY["on"] else "lists", cfg)
         r = _call(s.get, f"{API}{path}", "the flight-data server", params=params, headers=headers)
+        _note(cfg, r)
         if r.status_code == 404:
             return []  # OpenSky answers 404 when there are no flights
         if r.status_code == 429:
@@ -393,10 +409,11 @@ def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:
         for h in todo[:100]:   # at most 100 new aircraft a day (each one is a request)
             try:
                 try:
-                    _spend("metadata")
+                    _spend("metadata", cfg)
                 except DataError:
                     break
                 r = session.get(f"{API}/metadata/aircraft/icao/{h}", headers=headers, timeout=20)
+                _note(cfg, r)
                 if r.status_code == 429:
                     break        # daily allowance used up: stop, and look the rest up another day
                 if r.status_code == 404:

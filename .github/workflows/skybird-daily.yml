@@ -123,6 +123,8 @@ jobs:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           GITHUB_TOKEN: ${{ github.token }}
+          # a run you start by hand may use the shared OpenSky reserve
+          SKYBIRD_USE_RESERVE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
           ONLY: ${{ inputs.only }}
           DAY: ${{ inputs.day }}
           POST_TIME: ${{ inputs.post_time }}

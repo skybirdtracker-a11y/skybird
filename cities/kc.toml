@@ -24,6 +24,9 @@ launch_date = ""
 # Map: centered on downtown, with KCI north of the river
 map_center = [-94.58, 39.16]
 comment_policy = "MKC is a known celebrity-jet airport: hide replies that try to identify a specific jet or person."
+core_fields = ["KMCI", "KMKC", "KOJC"]   # always counted, first
+extra_fields_min_credits = 1500          # the other fields only while OpenSky has this many credits left
+locator_map = true                       # the scoreboard video shows where each airport is
 exclude = ["KSZL", "KFLV"]   # Whiteman AFB, Fort Leavenworth (military): never counted, never shown
 towns = [
   ["Kansas City", -94.5786, 39.0997, "big"],
@@ -50,6 +53,8 @@ K3GV = ["East KC", "ga"]
 KK34 = ["Gardner", "ga"]
 K3EX = ["Excelsior Springs", "ga"]
 # Every public metro airport with real traffic. Each costs 2 OpenSky flight lists a day;
+# KCI, Downtown and Johnson County Exec (core_fields) always come first; the others are only
+# asked for while OpenSky has at least extra_fields_min_credits left that day.
 # any with fewer than 5 takeoffs and landings shows as "Other fields".
 # Never counted: Whiteman AFB (KSZL) and Sherman Army Air Field at Fort Leavenworth (KFLV).
 

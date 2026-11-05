@@ -166,6 +166,9 @@ def _get(cfg: Config, s, path: str, params: dict) -> list:
     return []
 
 
+SKIPPED_FIELDS: list[str] = []   # fields the last fetch left out to save OpenSky credits
+
+
 def fetch_opensky(cfg: Config, day: date, session=None) -> list[dict]:
     """All departures + arrivals at the metro airports for one flight day
     (3:30 AM to 3:29 AM Central by default; see flight_day_start)."""
@@ -175,8 +178,21 @@ def fetch_opensky(cfg: Config, day: date, session=None) -> list[dict]:
     seen, flights = set(), []
     # One request per airport and direction, plus one per learned small field next to
     # Eppley. (Asking in 6-hour pieces used 4x more of the allowance and didn't help.)
-    asks = [(icao, kind) for icao in cfg.metro for kind in ("departure", "arrival")]
-    asks += [(code, "arrival") for code in near_fields(cfg)]   # small fields where Eppley landings get filed
+    core = list(cfg.city.get("core_fields") or cfg.metro) if cfg.city else list(cfg.metro)
+    extra = [i for i in cfg.metro if i not in core]
+    asks = [(icao, kind) for icao in core for kind in ("departure", "arrival")]
+    asks += [(code, "arrival") for code in near_fields(cfg)]   # small fields where hub landings get filed
+    SKIPPED_FIELDS.clear()
+    if extra:   # the other fields only while OpenSky has credits to spare (core_fields come first)
+        from .budget import ledger
+        left = ledger(cfg).day().get("remaining")
+        need = int(cfg.city.get("extra_fields_min_credits", 1500))
+        if left is not None and left < need:
+            SKIPPED_FIELDS.extend(extra)
+            log(cfg, f"OpenSky has {left} credits left (under {need}): counting only {', '.join(core)} today; "
+                     f"skipped {', '.join(extra)}")
+        else:
+            asks += [(icao, kind) for icao in extra for kind in ("departure", "arrival")]
     for icao, kind in asks:
         got = _get(cfg, s, f"/flights/{kind}", {"airport": icao, "begin": begin, "end": end})
         for f in got:

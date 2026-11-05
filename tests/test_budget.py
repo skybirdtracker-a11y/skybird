@@ -203,3 +203,32 @@ def test_credits_are_measured_from_opensky_count(project, monkeypatch):
     assert om.credits() == 30 and kc.credits() == 90 and kc.day()["remaining"] == 3880
     kc.note_headers({"X-Rate-Limit-Remaining": "3999"})                 # OpenSky reset: not a use
     assert kc.credits() == 90
+
+
+def test_kc_main_fields_first_others_only_with_credits_to_spare(project, monkeypatch):
+    """KCI, Downtown and Johnson County Exec are always asked for; the other metro fields only
+    while OpenSky has extra_fields_min_credits left, and skipped fields aren't claimed."""
+    from skybird import captions
+    monkeypatch.setattr("skybird.notify.send", lambda *a, **k: None)
+    k = load_config(project / "cloud" / "config.toml", "kc")
+    k.secrets.update(opensky_client_id="id", opensky_client_secret="s")
+    asked = []
+
+    class Session:
+        def post(self, url, **kw):
+            return FakeResp({"access_token": "t", "expires_in": 1800})
+
+        def get(self, url, **kw):
+            asked.append(kw["params"]["airport"])
+            return FakeResp([], 404, {"X-Rate-Limit-Remaining": "900"})
+    budget.Ledger(k).note_headers({"X-Rate-Limit-Remaining": "900"})        # under 1,500 left today
+    fl.fetch_opensky(k, date(2026, 11, 4), Session())
+    assert set(asked) <= {"KMCI", "KMKC", "KOJC"} | set(fl.near_fields(k)) and {"KMCI", "KMKC", "KOJC"} <= set(asked)
+    assert set(fl.SKIPPED_FIELDS) == {"KIXD", "KLXT", "KGPH", "K3GV", "KK34", "K3EX"}
+    stats = {"flights": 50, "airports": [{"code": "MCI", "name": "KCI", "count": 50}], "fields_skipped": fl.SKIPPED_FIELDS}
+    text = " ".join(o["text"] for o in captions.build_options(k, "all", stats, date(2026, 11, 4)))
+    assert "three airfields" in text and "nine" not in text
+    asked.clear()
+    budget.Ledger(k).note_headers({"X-Rate-Limit-Remaining": "3000"})       # plenty: every field
+    fl.fetch_opensky(k, date(2026, 11, 4), Session())
+    assert {"KIXD", "K3EX"} <= set(asked) and fl.SKIPPED_FIELDS == []

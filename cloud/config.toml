@@ -128,7 +128,7 @@ farthest = 1
 firstlast = 1
 types = 1
 weekend = 1
-scoreboard = 1
+scoreboard = 2        # Nov 5: 171 over 2 runs (typical post ~100)
 hours = 1
 
 # Fixed dates win over the rotation (and count toward the day's concepts).

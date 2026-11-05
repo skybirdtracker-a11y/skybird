@@ -17,7 +17,7 @@ from skybird.config import load_config  # noqa: E402
 @pytest.fixture
 def cfg(tmp_path):
     shutil.copy(ROOT / "cloud" / "config.toml", tmp_path / "config.toml")
-    shutil.copy(ROOT / "events.toml", tmp_path / "events.toml")
+    shutil.copytree(ROOT / "events", tmp_path / "events")
     return load_config(tmp_path / "config.toml")
 
 

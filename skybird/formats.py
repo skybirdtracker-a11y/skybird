@@ -32,6 +32,8 @@ FORMATS = {   # key -> (calendar number, title)
     "types": ("#30", "Which jets fly Omaha"),
     "wrap": ("#07", "Sunday weekly wrap"),
     "lincoln": ("", "Game weekend jets · Lincoln"),
+    "gameday": ("", "Game-day private jets"),
+    "rivalry": ("", "Omaha vs. Kansas City"),
 }
 # The concepts each post can be swapped for (military stays regular: counts only).
 POOLS = {
@@ -49,8 +51,8 @@ def title(fmt: str) -> str:
 
 def format_for(cfg: Config, post_date: date, slot_key: str) -> str | None:
     """The format replacing this slot's regular post on this date, if any."""
-    if slot_key == "wrap":
-        return "wrap"
+    if slot_key in ("wrap", "rivalry"):   # their own weekly posts
+        return slot_key
     return day_plan(cfg, post_date).get(slot_key)
 
 
@@ -88,13 +90,24 @@ def day_schedule(cfg: Config, post_date: date) -> dict:
     except ValueError:
         volume_until = None
     daily = [s.key for s in cfg.slots if s.key in ALL_SLOTS and not s.occasional]
+    from .events import load_events   # event days with their own post (e.g. Chiefs game day)
+    gamedays = {ev["start"] + timedelta(days=i) for ev in load_events(cfg) if ev.get("gameday")
+                for i in range((ev["end"] - ev["start"]).days + 1)}
     per_day = float(t.get("per_day", 2))
     used: Counter = Counter()
 
     def plan_for(d: date) -> dict:
         fixed = {k: v for k, v in (cfg.section("formats").get(d.isoformat()) or {}).items() if v in FORMATS}
-        if not on or d < start:
+        if gamedays and cfg.data_date(d) in gamedays and "private" not in fixed:
+            fixed["private"] = "gameday"   # the day after the lag: game day's private jets
+        if on and d < start:   # before the test: all four posted
             return {"level": len(ALL_SLOTS), "running": list(ALL_SLOTS), "formats": fixed}
+        if not on:   # no rotation: the daily posts, each city's fixed lineup ([daily_formats])
+            swap = [x for x in (cfg.section("posts_on").get(d.isoformat()) or []) if x in ALL_SLOTS]
+            running = [x for x in ALL_SLOTS if x in (swap or daily)]
+            plan = {k: v for k, v in cfg.section("daily_formats").items() if k in running and v in FORMATS}
+            plan.update({k: v for k, v in fixed.items() if k in running})
+            return {"level": len(running), "running": running, "formats": plan}
         k = (d - start).days
         if volume and (volume_until is None or d < volume_until):
             base = ALL_SLOTS
@@ -246,6 +259,80 @@ def weekend(cfg: Config, flight_day: date, today: dict) -> dict:
     fams = Counter(m["family"] for m in moves if m["family"] and m["group"] == "bizjet")
     s["top_types"] = [{"name": n, "count": c} for n, c in fams.most_common(3)]
     return {"moves": moves, "stats": s}
+
+
+def gameday(cfg: Config, flight_day: date, today: dict) -> dict:
+    """Private planes that landed at the metro fields on a game day (e.g. a Chiefs home
+    game), compared with the same weekday a week earlier. Saved data only: no new requests."""
+    moves = [m for m in today["posts"]["private"]["moves"] if m["dir"] == "arr"]
+    if not moves:
+        raise ValueError("no private arrivals")
+    jets = [m for m in moves if m["group"] == "bizjet"]
+    usual = None
+    p = cfg.data_dir / "flights" / f"{(flight_day - timedelta(days=7)).isoformat()}.json"
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))["flights"]
+        before = fl.build_day(cfg, raw, fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), None))
+        usual = sum(1 for m in before["posts"]["private"]["moves"] if m["dir"] == "arr" and m["group"] == "bizjet")
+    except (OSError, ValueError, KeyError):
+        pass
+    origins = Counter((m["other"]["code"], m["other"]["city"]) for m in jets if m["other"])
+    s = {"arrivals": len(moves), "departures": 0, "flights": len(moves), "jets": len(jets),
+         "small": sum(1 for m in moves if m["group"] == "prop"),
+         "top_origins": [{"code": c, "city": city, "count": n} for (c, city), n in origins.most_common(5)],
+         "cities_linked": len(origins), "game_day": flight_day.isoformat()}
+    s["top_destinations"] = s["top_origins"]
+    if usual is not None:
+        s["normal"] = usual
+        if usual:
+            s["change_pct"] = round(100 * (len(jets) - usual) / usual)
+    far = None
+    for m in jets:
+        if m["other"] and m["metro_place"]:
+            d = fl.miles(m["other"], m["metro_place"])
+            if not far or d > far["miles"]:
+                far = {"code": m["other"]["code"], "city": m["other"]["city"], "miles": round(d)}
+    if far:
+        s["farthest"] = far
+    fams = Counter(m["family"] for m in jets if m["family"])
+    s["top_types"] = [{"name": n, "count": c} for n, c in fams.most_common(3)]
+    return {"moves": moves, "stats": s}
+
+
+RIVALS = ("omaha", "kc")
+
+
+def rivalry(cfg: Config, flight_day: date) -> dict:
+    """Omaha vs. Kansas City: private jets (takeoffs and landings) over the 7 flight days
+    ending `flight_day`, from each city's saved flight lists. No new OpenSky requests.
+    Needs at least 5 of the 7 days for both cities, else no post."""
+    from .config import load_config
+    sides = []
+    for cid in RIVALS:
+        c = cfg if cfg.city_id == cid else load_config(cfg.path, cid)
+        days = []
+        for i in range(6, -1, -1):
+            d = flight_day - timedelta(days=i)
+            p = c.data_dir / "flights" / f"{d.isoformat()}.json"
+            try:
+                raw = json.loads(p.read_text(encoding="utf-8"))["flights"]
+            except (OSError, ValueError, KeyError):
+                days.append({"label": d.strftime("%a").upper(), "jets": None})
+                continue
+            st = fl.build_day(c, raw, fl.aircraft_info(c, fl.private_icao24s(c, raw), None))["posts"]["private"]["stats"]
+            days.append({"label": d.strftime("%a").upper(), "jets": st["jets"]})
+        have = [x["jets"] for x in days if x["jets"] is not None]
+        if len(have) < 5:
+            raise ValueError(f"{c.city_name} has only {len(have)} of the last 7 days saved")
+        # a missing day counts as that city's average, so both sides cover 7 days
+        avg = sum(have) / len(have)
+        sides.append({"city": c.city_name, "id": cid, "days": days,
+                      "total": round(sum(x["jets"] if x["jets"] is not None else avg for x in days))})
+    win = max(sides, key=lambda x: x["total"])
+    s = {"sides": sides, "winner": win["city"] if sides[0]["total"] != sides[1]["total"] else "",
+         "range": f"{(flight_day - timedelta(days=6)):%b} {(flight_day - timedelta(days=6)).day} – {flight_day:%b} {flight_day.day}"}
+    s.update(flights=sum(x["total"] for x in sides), departures=0, arrivals=0)
+    return {"moves": [], "stats": s}
 
 
 def record_fields(cfg: Config, flight_day: date, airports: list[dict]) -> None:
@@ -470,6 +557,8 @@ FORMAT_TAGS = {
     "scoreboard": ["#EppleyAirfield", "#Millard", "#CouncilBluffs", "#OffuttAFB", "#OmahaMetro"],
     "wrap": ["#EppleyAirfield", "#OmahaMetro", "#weekinreview"],
     "lincoln": ["#Huskers", "#GBR", "#Lincoln", "#LincolnNE", "#MemorialStadium", "#privatejet", "#bizjet"],
+    "gameday": ["#ChiefsKingdom", "#privatejet", "#bizjet", "#GameDay"],
+    "rivalry": ["#Omaha", "#KansasCity", "#privatejet", "#avgeek"],
 }
 TIKTOK = {
     "guess": ["#SkyBirdOmaha", "#Omaha", "#EppleyAirfield", "#avgeek", "#quiz"],
@@ -481,6 +570,8 @@ TIKTOK = {
     "scoreboard": ["#SkyBirdOmaha", "#Omaha", "#avgeek", "#aviation", "#planespotting"],
     "wrap": ["#SkyBirdOmaha", "#Omaha", "#avgeek", "#aviation", "#planespotting"],
     "lincoln": ["#SkyBirdOmaha", "#Lincoln", "#Huskers", "#privatejet", "#avgeek"],
+    "gameday": ["#SkyBirdOmaha", "#Omaha", "#ChiefsKingdom", "#privatejet", "#avgeek"],
+    "rivalry": ["#SkyBirdOmaha", "#Omaha", "#KansasCity", "#privatejet", "#avgeek"],
 }
 CTA = {   # (id, text)
     "guess": ("tag_friend", "Tag someone who flies out of Eppley way too much."),
@@ -492,11 +583,13 @@ CTA = {   # (id, text)
     "scoreboard": ("follow", "Follow for Omaha's sky, every morning. ✈️"),
     "wrap": ("follow", "Follow for Omaha's sky, every morning. ✈️"),
     "lincoln": ("follow", "Follow for Omaha's sky, every morning. ✈️"),
+    "gameday": ("follow", "Follow for Omaha's sky, every morning. ✈️"),
+    "rivalry": ("tag_friend", "Tag someone who flies out of Eppley way too much."),
 }
 
 
-def caption_options(fmt: str, stats: dict, data_date: date, post_date: date) -> list[dict]:
-    """Caption options for a format (first = the default)."""
+def caption_options(fmt: str, stats: dict, data_date: date, post_date: date, cfg: Config | None = None) -> list[dict]:
+    """Caption options for a format (first = the default), in the city's words."""
     day = data_date.strftime("%A")
     s = stats
     opts = []
@@ -544,10 +637,24 @@ def caption_options(fmt: str, stats: dict, data_date: date, post_date: date) -> 
                      + (f" and {s['small']} small planes" if s.get("small") else "") + " flew into Omaha over the weekend. Most came from {top.get('city')} "
                      f"({top.get('count')})." + (f" Farthest trip in: {far}." if far else "") + " See you up there."))
         opts.append(("deadpan", "Deadpan", f"{s.get('jets', s.get('arrivals', 0))} private jets came to Omaha this weekend. Still no invitation. Roger, roger."))
+    elif fmt == "gameday":
+        top = (s.get("top_origins") or [{}])[0].get("city")
+        vs = f", vs {s['normal']} the same day a week before" if s.get("normal") is not None else ""
+        opts.append(("local_tie_in", "Local tie-in",
+                     f"Game day in Kansas City 🏈 {s.get('jets', 0)} private jets flew into the metro's airports on {day}{vs}."
+                     + (f" Most came from {top}." if top else "")
+                     + (f" Plus {s['small']} small planes." if s.get("small") else "")))
+        opts.append(("guess", "Guess first", f"Guess before you watch: how many private jets flew into Kansas City for the game on {day}? 👇"))
+    elif fmt == "rivalry":
+        a, b = (s.get("sides") or [{}, {}])[:2]
+        lead = (f"{s['winner']} wins this week" if s.get("winner") else "It's a tie this week")
+        opts.append(("question", "Question",
+                     f"Omaha vs. Kansas City: who flew more private jets this week ({s.get('range', '')})? "
+                     f"{lead}: {a.get('city')} {a.get('total', 0):,}, {b.get('city')} {b.get('total', 0):,} "
+                     "takeoffs and landings. Which city are you rooting for?"))
     elif fmt == "scoreboard":
-        sb = {r["name"]: r["count"] for r in (s.get("scoreboard") or {}).get("rows", [])}
-        line = (f"Eppley {sb.get('Eppley', 0)}, Millard {sb.get('Millard', 0)}, "
-                f"Council Bluffs {sb.get('Council Bluffs', 0)}, Offutt at least {sb.get('Offutt', 0)}")
+        rows = (s.get("scoreboard") or {}).get("rows", [])
+        line = ", ".join(f"{r['name']}{' at least' if r['code'] == 'OFF' else ''} {r['count']}" for r in rows)
         dead = ("deadpan", "Deadpan", f"{day}'s scoreboard: {line}. Roger, roger.")
         ques = ("question", "Question", f"Which field is closest to you? {day}'s scoreboard: {line}.")
         opts += [dead, ques] if post_date.weekday() == 4 else [ques, dead]
@@ -555,8 +662,10 @@ def caption_options(fmt: str, stats: dict, data_date: date, post_date: date) -> 
         top = (s.get("top_destinations") or [{}])[0].get("city")
         opts.append(("friendly", "Friendly",
                      f"Omaha's week in the sky ({s.get('range', '')}): {s.get('week_airline', 0):,} airline flights at "
-                     f"Eppley, {s.get('week_private', 0):,} private jet takeoffs and landings and at least "
-                     f"{s.get('week_military', 0):,} at Offutt. Busiest day: {s.get('busiest_day', '?')}."
+                     f"Eppley" + (f", {s.get('week_private', 0):,} private jet takeoffs and landings and at least "
+                                  f"{s.get('week_military', 0):,} at Offutt." if s.get("week_military") else
+                                  f" and {s.get('week_private', 0):,} private jet takeoffs and landings.")
+                     + f" Busiest day: {s.get('busiest_day', '?')}."
                      + (f" Top city: {top}." if top else "") + " See you up there."))
         opts.append(("question", "Question",
                      f"{s.get('busiest_day', 'One day')} was Omaha's busiest day in the sky this week, with "
@@ -573,7 +682,8 @@ def caption_options(fmt: str, stats: dict, data_date: date, post_date: date) -> 
         opts.append(("deadpan", "Deadpan", f"{n} private jets landed in Lincoln for the game. Ours is still in the shop. Roger, roger."))
         opts.append(("guess", "Guess first", "Guess before you watch: how many private jets flew into Lincoln for the game? 👇 Answer at the end."))
     cta = CTA[fmt]
-    return [{"id": i, "label": label, "text": text + "\n\n" + cta[1], "cta": cta[0]} for i, label, text in opts]
+    local = cfg.local if cfg else (lambda x: x)
+    return [{"id": i, "label": label, "text": local(text + "\n\n" + cta[1]), "cta": cta[0]} for i, label, text in opts]
 
 
 def hashtag_choices(cfg: Config, fmt: str, base_slot: str, stats: dict, events: list[dict]) -> list[dict]:
@@ -583,10 +693,12 @@ def hashtag_choices(cfg: Config, fmt: str, base_slot: str, stats: dict, events: 
         out = [h for h in out if h["tag"].lower() not in ("#eppleyairfield", "#councilbluffs", "#oma", "#omahaairport",
                                                           "#millard", "#offuttafb", "#travel")]
     have = {h["tag"].lower() for h in out}
-    extra = [{"tag": t, "checked": True, "source": "post"} for t in FORMAT_TAGS[fmt] if t.lower() not in have]
+    extra = [{"tag": cfg.local(t), "checked": True, "source": "post"} for t in FORMAT_TAGS[fmt]
+             if cfg.local(t).lower() not in have]
     return extra + out
 
 
 def base_slot(fmt: str, slot_key: str) -> str:
     """Which regular post's tag rules a format follows."""
-    return {"lincoln": "private", "wrap": "all", "weekend": "private", "types": "private"}.get(fmt, slot_key)
+    return {"lincoln": "private", "wrap": "all", "weekend": "private", "types": "private", "gameday": "private",
+            "rivalry": "all"}.get(fmt, slot_key)

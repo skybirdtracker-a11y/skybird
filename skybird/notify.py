@@ -35,6 +35,8 @@ def topic_problem(topic: str) -> str:
 def send(cfg: Config, title: str, message: str, *, priority: str = "default", path: str = "/",
          click: str | None = None) -> bool:
     n = cfg.section("notify")
+    if cfg.city and cfg.city_id != "omaha" and title.startswith("SkyBird"):
+        title = f"SkyBird {cfg.city_name}" + title[len("SkyBird"):]   # which city it's about
     topic = topic_of(cfg)
     if not topic:
         LAST["result"] = "no ntfy topic set"

@@ -13,11 +13,18 @@ from pathlib import Path
 from .config import Config
 
 
+def events_file(cfg: Config) -> Path | None:
+    """events/<city>.toml (the project's or next to the config); older setups: events.toml."""
+    for p in (cfg.root / "events" / f"{cfg.city_id}.toml", cfg.root.parent / "events" / f"{cfg.city_id}.toml",
+              cfg.root / "events.toml", cfg.root.parent / "events.toml"):
+        if p.exists() and (p.parent.name == "events" or cfg.city_id == "omaha"):
+            return p
+    return None
+
+
 def load_events(cfg: Config) -> list[dict]:
-    p = cfg.root / "events.toml"
-    if not p.exists():
-        p = cfg.root.parent / "events.toml"   # cloud/config.toml uses the project's events.toml
-    if not p.exists():
+    p = events_file(cfg)
+    if not p:
         return []
     raw = tomllib.loads(p.read_text(encoding="utf-8"))
     out = []

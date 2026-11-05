@@ -31,6 +31,8 @@ from .state import log
 TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
 API = "https://opensky-network.org/api"
 
+# Omaha's fields (the default city). Other cities' fields come from cities/<city>.toml:
+# use cfg.metro / cfg.hub, not these.
 METRO = {  # ICAO -> short name
     "KOMA": "Eppley",
     "KMLE": "Millard",
@@ -39,6 +41,7 @@ METRO = {  # ICAO -> short name
 }
 HUB = "KOMA"
 PRIVATE_GROUPS = ("bizjet", "prop", "unknown")   # the 11 AM post: private jets + small planes
+MIN_FIELD_MOVES = 5   # fields with fewer movements than this are shown only as "Other fields"
 
 AIRLINES = {
     "AAL": "American", "UAL": "United", "DAL": "Delta", "SWA": "Southwest", "SKW": "SkyWest",
@@ -156,7 +159,7 @@ def fetch_opensky(cfg: Config, day: date, session=None) -> list[dict]:
     seen, flights = set(), []
     # One request per airport and direction, plus one per learned small field next to
     # Eppley. (Asking in 6-hour pieces used 4x more of the allowance and didn't help.)
-    asks = [(icao, kind) for icao in METRO for kind in ("departure", "arrival")]
+    asks = [(icao, kind) for icao in cfg.metro for kind in ("departure", "arrival")]
     asks += [(code, "arrival") for code in near_fields(cfg)]   # small fields where Eppley landings get filed
     for icao, kind in asks:
         got = _get(cfg, s, f"/flights/{kind}", {"airport": icao, "begin": begin, "end": end})
@@ -252,7 +255,6 @@ def family(model: str | None, manufacturer: str | None) -> str | None:
     return (model or "").strip() or None
 
 
-SMALL_FIELDS = ("KCBF", "KMLE")   # Council Bluffs + Millard: no airline jets land there
 
 
 def fix_airline_fields(cfg: Config, raw: list[dict]) -> int:
@@ -267,8 +269,8 @@ def fix_airline_fields(cfg: Config, raw: list[dict]) -> int:
         if classify(f, airlines, mil, excl) != "commercial":
             continue
         for k in ("estArrivalAirport", "estDepartureAirport"):
-            if f.get(k) in SMALL_FIELDS or f.get(k) in near:
-                f[k] = HUB
+            if f.get(k) in cfg.small_fields or f.get(k) in near:
+                f[k] = cfg.hub
                 f["moved_to_eppley"] = True
                 n += 1
     if n:
@@ -279,7 +281,7 @@ def fix_airline_fields(cfg: Config, raw: list[dict]) -> int:
 def eppley_arrivals(cfg: Config, raw: list[dict]) -> int:
     """Airline arrivals at Eppley in a flight list (for the run's breakdown)."""
     airlines, mil, excl = _lists(cfg)
-    return sum(1 for f in raw if f.get("estArrivalAirport") == HUB and f.get("estDepartureAirport") != HUB
+    return sum(1 for f in raw if f.get("estArrivalAirport") == cfg.hub and f.get("estDepartureAirport") != cfg.hub
                and classify(f, airlines, mil, excl) == "commercial")
 
 
@@ -294,7 +296,7 @@ def infer_arrivals(cfg: Config, raw: list[dict], day: date, session=None) -> lis
     start, stop = cfg.flight_day(day)
     begin, end = int(start.timestamp()), int(stop.timestamp()) - 1
     known = {(f.get("icao24"), f.get("firstSeen")) for f in raw}   # flights already in the list
-    deps = sorted((f for f in raw if f.get("estDepartureAirport") in METRO and f.get("icao24")
+    deps = sorted((f for f in raw if f.get("estDepartureAirport") in cfg.metro and f.get("icao24")
                    and f.get("estDepartureAirport") != f.get("estArrivalAirport")), key=lambda f: f.get("firstSeen") or 0)
     airlines, mil, excl = _lists(cfg)
     rank = {"commercial": 0, "private": 1, "military": 2}   # airlines first if the cap is reached
@@ -328,9 +330,9 @@ def infer_arrivals(cfg: Config, raw: list[dict], day: date, session=None) -> lis
             field = d["estDepartureAirport"]
             if (icao24, p.get("firstSeen")) in known or not (begin <= (p.get("lastSeen") or 0) <= end):
                 continue   # already counted, or it landed outside this flight day
-            if p.get("estArrivalAirport") in METRO or p.get("estDepartureAirport") == field:
+            if p.get("estArrivalAirport") in cfg.metro or p.get("estDepartureAirport") == field:
                 continue   # OpenSky did catch this landing, or it's a local loop
-            if field == HUB and p.get("estArrivalAirport") and classify(p, airlines, mil, excl) == "commercial":
+            if field == cfg.hub and p.get("estArrivalAirport") and classify(p, airlines, mil, excl) == "commercial":
                 learned.append(p["estArrivalAirport"])   # a small field OpenSky files Eppley landings under
             added.append(dict(p, estArrivalAirport=field, callsign=p.get("callsign") or d.get("callsign"),
                               inferred=True, filed_at=p.get("estArrivalAirport")))
@@ -346,9 +348,13 @@ def infer_arrivals(cfg: Config, raw: list[dict], day: date, session=None) -> lis
 # (e.g. a Southwest jet from Denver landing at Eppley was filed at "NE11", a strip
 # 7.6 km away). Learned from the fill-in; airline flights there are counted as Eppley.
 
+def _near_file(cfg: Config):
+    return cfg.data_dir / ("near_eppley.json" if cfg.hub == "KOMA" else f"near_{cfg.hub.lower()}.json")
+
+
 def near_fields(cfg: Config) -> list[str]:
     try:
-        d = json.loads((cfg.data_dir / "near_eppley.json").read_text(encoding="utf-8"))
+        d = json.loads(_near_file(cfg).read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         return []
     # the codes seen most often first; at most 6 (each costs one request a day)
@@ -356,13 +362,13 @@ def near_fields(cfg: Config) -> list[str]:
 
 
 def learn_near_fields(cfg: Config, codes: list[str]) -> None:
-    path = cfg.data_dir / "near_eppley.json"
+    path = _near_file(cfg)
     try:
         d = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         d = {}
     for c in codes:
-        if c and c not in METRO:
+        if c and c not in cfg.metro and c not in cfg.excluded:
             d[c] = d.get(c, 0) + 1
     path.write_text(json.dumps(d, indent=1), encoding="utf-8")
     log(cfg, "Small fields OpenSky files Eppley landings under: " + ", ".join(f"{c} ({n})" for c, n in
@@ -371,7 +377,7 @@ def learn_near_fields(cfg: Config, codes: list[str]) -> None:
 
 def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:
     """{icao24: {"cls": "jet"|"prop"|"heli"|None, "family": str|None}}. Owner/registration are never kept."""
-    path = cfg.data_dir / "aircraft_cache.json"
+    path = cfg.shared_dir / "aircraft_cache.json"   # shared by every city: the same jets fly to both
     try:
         cache = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
@@ -422,11 +428,14 @@ def build_day(cfg: Config, raw: list[dict], info: dict | None = None) -> dict:
     airlines, mil, excl = _lists(cfg)
     info = info or {}
     out = []
+    metro, hub, mil_fields, skip = cfg.metro, cfg.hub, cfg.military_fields, set(cfg.excluded)
     for f in raw:
         dep, arr = f.get("estDepartureAirport"), f.get("estArrivalAirport")
         kind = classify(f, airlines, mil, excl)
-        if kind == "excluded":
-            continue
+        if kind == "excluded" or dep in skip or arr in skip:
+            continue   # air ambulances; excluded fields (e.g. Whiteman AFB) are never counted or shown
+        if kind == "military" and not mil_fields:
+            continue   # a city without a military post (Kansas City) leaves military out entirely
         cs = (f.get("callsign") or "").strip().upper()
         meta = info.get(f.get("icao24"), {})
         if meta.get("cls") == "heli":
@@ -444,15 +453,15 @@ def build_day(cfg: Config, raw: list[dict], info: dict | None = None) -> dict:
         base = {"callsign": cs, "kind": kind, "group": group,
                 "airline": airlines.get(cs[:3]) if kind == "commercial" else PRIVATE_OPERATORS.get(cs[:3]),
                 "family": meta.get("family"), "t0": f.get("firstSeen"), "t1": f.get("lastSeen")}
-        if dep in METRO and dep != arr:
+        if dep in metro and dep != arr:
             out.append(dict(base, dir="dep", metro=dep, other=place(arr), metro_place=place(dep), t=f.get("firstSeen")))
-        if arr in METRO and dep != arr:
+        if arr in metro and dep != arr:
             out.append(dict(base, dir="arr", metro=arr, other=place(dep), metro_place=place(arr), t=f.get("lastSeen")))
-        if dep in METRO and dep == arr:
+        if dep in metro and dep == arr:
             out.append(dict(base, dir="local", metro=dep, other=None, metro_place=place(dep), t=f.get("firstSeen")))
     posts = {
-        "commercial": [m for m in out if m["group"] == "airline" and m["metro"] == HUB],
-        "private": [m for m in out if m["group"] in PRIVATE_GROUPS and m["metro"] != "KOFF"],
+        "commercial": [m for m in out if m["group"] == "airline" and m["metro"] == hub],
+        "private": [m for m in out if m["group"] in PRIVATE_GROUPS and m["metro"] not in mil_fields],
         "military": [m for m in out if m["group"] == "military"],
         "all": out,
     }
@@ -469,10 +478,11 @@ def build_day(cfg: Config, raw: list[dict], info: dict | None = None) -> dict:
     arrivals_ok = c["arrivals"] >= max(40, 0.6 * c["departures"])
     day["complete"] = c["departures"] >= 60 and late_enough and arrivals_ok
     day["why"] = "" if day["complete"] else (
-        f"Eppley shows {c['departures']} airline departures and {c['arrivals']} arrivals, the last departure at "
+        f"{cfg.hub_name} shows {c['departures']} airline departures and {c['arrivals']} arrivals, the last departure at "
         f"{datetime.fromtimestamp(last, cfg.tz).strftime('%I:%M %p').lstrip('0') if last else 'n/a'}. "
-        "Eppley has about 70-75 airline departures a day and about as many arrivals (Omaha Airport "
-        "Authority), running past 9 PM, so OpenSky's data looks unfinished.")
+        + ("Eppley has about 70-75 airline departures a day and about as many arrivals (Omaha Airport "
+           "Authority), running past 9 PM, so OpenSky's data looks unfinished." if cfg.hub == "KOMA" else
+           "Arrivals should roughly match departures and run past 9 PM, so OpenSky's data looks unfinished."))
     return day
 
 
@@ -526,7 +536,12 @@ def stats(cfg: Config, slot: str, moves: list[dict]) -> dict:
         s["top_operators"] = [{"name": n, "count": c} for n, c in Counter(m["airline"] for m in moves if m["airline"]).most_common(3)]
     if slot == "all":
         c = Counter(m["metro"] for m in moves)
-        s["airports"] = [{"code": place(i)["code"] if place(i) else i, "name": METRO[i], "count": c.get(i, 0)} for i in METRO]
+        rows = [{"code": place(i)["code"] if place(i) else i, "name": n, "count": c.get(i, 0)} for i, n in cfg.metro.items()]
+        # a field with fewer than 5 takeoffs and landings is rolled into "Other fields"
+        small = [r for r in rows if r["count"] < MIN_FIELD_MOVES]
+        s["airports"] = [r for r in rows if r["count"] >= MIN_FIELD_MOVES]
+        if small:
+            s["airports"].append({"code": "OTHER", "name": "Other fields", "count": sum(r["count"] for r in small)})
         s["by_group"] = dict(Counter(m["group"] for m in moves))
     return s
 
@@ -576,6 +591,9 @@ def military_week(cfg: Config, day: date, today_count: int, session=None, backfi
         hist = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         hist = {}
+    if not cfg.military_fields:
+        return []   # a city without a military post: nothing to count, nothing to ask OpenSky
+    field = cfg.military_fields[0]
     hist.setdefault(day.isoformat(), {})["military"] = today_count
     airlines, mil, excl = _lists(cfg)
     for i in range(1, 7):
@@ -587,8 +605,8 @@ def military_week(cfg: Config, day: date, today_count: int, session=None, backfi
             b, e = int(start.timestamp()), int(stop.timestamp()) - 1
             _HISTORY["on"] = True
             try:
-                raw = _get(cfg, session, "/flights/departure", {"airport": "KOFF", "begin": b, "end": e}) + \
-                    _get(cfg, session, "/flights/arrival", {"airport": "KOFF", "begin": b, "end": e})
+                raw = _get(cfg, session, "/flights/departure", {"airport": field, "begin": b, "end": e}) + \
+                    _get(cfg, session, "/flights/arrival", {"airport": field, "begin": b, "end": e})
             finally:
                 _HISTORY["on"] = False
             n = sum(1 for f in raw if classify(f, airlines, mil, excl) == "military")
@@ -612,7 +630,7 @@ def demo_raw(day: date, cfg: Config, seed: int = 7) -> list[dict]:
     """Made-up but realistic day (about 90 airline departures, 5 AM to 10:30 PM)."""
     rnd = random.Random(seed)
     start = datetime.combine(day, datetime.min.time(), tzinfo=cfg.tz).timestamp()
-    hub = place("KOMA")
+    hub = place(cfg.hub)
     common = ["KORD", "KDEN", "KPHX", "KMSP", "KDFW", "KATL", "KLAS", "KMDW", "KDTW", "KCLT", "KIAH", "KSLC",
               "KLGA", "KDCA", "KSTL", "KMEM", "KDAL", "KHOU", "KLAX", "KSEA", "CYYZ", "KPHL", "KBNA", "KMCO"]
     weights = [21, 16, 10, 9, 6, 6, 5, 5, 4, 4, 3, 3, 4, 3, 3, 2, 2, 2, 2, 1, 1, 1, 2, 2]
@@ -636,11 +654,11 @@ def demo_raw(day: date, cfg: Config, seed: int = 7) -> list[dict]:
         departing = i % 2 == 0 and i < 180
         t = start + (5.3 + rnd.random() * 17.2) * 3600
         if departing:
-            add(f"{al}{rnd.randint(100, 4999)}", "a%05x" % rnd.randint(0, 0xDFFFF), "KOMA", dest, t, True)
+            add(f"{al}{rnd.randint(100, 4999)}", "a%05x" % rnd.randint(0, 0xDFFFF), cfg.hub, dest, t, True)
         elif i < 150:
-            add(f"{al}{rnd.randint(100, 4999)}", "a%05x" % rnd.randint(0, 0xDFFFF), dest, "KOMA", t, False)
+            add(f"{al}{rnd.randint(100, 4999)}", "a%05x" % rnd.randint(0, 0xDFFFF), dest, cfg.hub, t, False)
     for i in range(38):
-        home = rnd.choice(["KOMA", "KOMA", "KMLE", "KCBF"])
+        home = rnd.choice([cfg.hub, cfg.hub] + (cfg.small_fields or [cfg.hub]))
         d = rnd.choice(biz + common[:6])
         cs = rnd.choice([f"EJA{rnd.randint(100, 999)}", f"LXJ{rnd.randint(300, 599)}",
                          f"N{rnd.randint(10, 999)}{rnd.choice('ABCDEFGHJKLMNPRSTUVWXYZ')}"])
@@ -649,9 +667,9 @@ def demo_raw(day: date, cfg: Config, seed: int = 7) -> list[dict]:
             add(cs, "a%05x" % rnd.randint(0, 0xDFFFF), home, d, t, True)
         else:
             add(cs, "a%05x" % rnd.randint(0, 0xDFFFF), d, home, t, False)
-    for i in range(9):
+    for i in range(9 if cfg.military_fields else 0):
         d = rnd.choice(mil)
         t = start + (7 + rnd.random() * 12) * 3600
         add(rnd.choice(["RCH", "SNOOP", "COBRA", "TOPCT"]) + str(rnd.randint(10, 99)), "ae%04x" % rnd.randint(0, 0xFFFF),
-            *(("KOFF", d, t, True) if i % 2 else (d, "KOFF", t, False)))
+            *((cfg.military_fields[0], d, t, True) if i % 2 else (d, cfg.military_fields[0], t, False)))
     return raw

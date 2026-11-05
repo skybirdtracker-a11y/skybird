@@ -1,0 +1,180 @@
+"""Several cities on one engine: Omaha stays as it was, Kansas City is its own city."""
+import json
+import shutil
+import sys
+from datetime import date, datetime
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from skybird import captions, engine, flights as fl, formats  # noqa: E402
+from skybird.config import load_config  # noqa: E402
+
+
+@pytest.fixture
+def project(tmp_path):
+    (tmp_path / "cloud").mkdir()
+    shutil.copy(ROOT / "cloud" / "config.toml", tmp_path / "cloud" / "config.toml")
+    shutil.copytree(ROOT / "cities", tmp_path / "cities")
+    shutil.copytree(ROOT / "events", tmp_path / "events")
+    return tmp_path
+
+
+def cfg_for(project, city=None):
+    return load_config(project / "cloud" / "config.toml", city)
+
+
+def test_omaha_is_the_default_and_keeps_its_settings(project):
+    c = cfg_for(project)
+    assert c.city_id == "omaha" and c.hub == "KOMA" and c.hub_name == "Eppley"
+    assert list(c.metro) == ["KOMA", "KMLE", "KCBF", "KOFF"]
+    assert c.platform_enabled("facebook") and c.platform_enabled("tiktok") and not c.platform_enabled("instagram")
+    assert not c.dry_run
+    assert c.data_dir == project / "cloud" / "data" / "omaha"
+    assert c.local("Morning, Omaha. Eppley moved 12 flights out of OMA.") == "Morning, Omaha. Eppley moved 12 flights out of OMA."
+
+
+def test_kansas_city_profile(project):
+    k = cfg_for(project, "kc")
+    assert k.city_id == "kc" and k.hub == "KMCI" and set(k.metro) == {"KMCI", "KMKC", "KOJC"}
+    assert k.military_fields == [] and k.excluded == ["KSZL"]
+    assert k.dry_run                                            # quiet build: never posts
+    assert k.platform_enabled("tiktok") and not k.platform_enabled("facebook") and not k.platform_enabled("instagram")
+    assert [s.key for s in k.slots] == ["commercial", "private", "all", "wrap", "rivalry"]
+    assert k.data_dir == project / "cloud" / "data" / "kc" and k.shared_dir == project / "cloud" / "data"
+    assert k.media_folder(date(2026, 11, 10)) == project / "cloud" / "videos" / "kc"
+    assert k.local("Save this for your next trip out of OMA. #SkyBirdOmaha #EppleyAirfield") == \
+        "Save this for your next trip out of MCI. #SkyBirdKC #KCI"
+    with pytest.raises(SystemExit):
+        cfg_for(project, "nowhere")
+
+
+def test_kc_never_counts_whiteman_or_military_and_rolls_up_small_fields(project):
+    k = cfg_for(project, "kc")
+    raw = [
+        {"callsign": "SWA1", "icao24": "c1", "estDepartureAirport": "KMCI", "estArrivalAirport": "KDEN", "firstSeen": 1, "lastSeen": 2},
+        {"callsign": "SWA2", "icao24": "c2", "estDepartureAirport": "KDAL", "estArrivalAirport": "KMCI", "firstSeen": 3, "lastSeen": 4},
+        {"callsign": "N1AB", "icao24": "c3", "estDepartureAirport": "KMKC", "estArrivalAirport": "KTEB", "firstSeen": 5, "lastSeen": 6},
+        {"callsign": "N2AB", "icao24": "c4", "estDepartureAirport": "KSZL", "estArrivalAirport": "KMKC", "firstSeen": 7, "lastSeen": 8},
+        {"callsign": "RCH12", "icao24": "ae0001", "estDepartureAirport": "KMCI", "estArrivalAirport": "KDOV", "firstSeen": 9, "lastSeen": 10},
+        {"callsign": "N3AB", "icao24": "c5", "estDepartureAirport": "KOJC", "estArrivalAirport": "KICT", "firstSeen": 11, "lastSeen": 12},
+    ] + [{"callsign": f"UAL{i}", "icao24": f"d{i}", "estDepartureAirport": "KMCI", "estArrivalAirport": "KORD",
+          "firstSeen": 20 + i, "lastSeen": 30 + i} for i in range(5)]
+    day = fl.build_day(k, raw)
+    every = day["posts"]["all"]["moves"]
+    assert not any(m["metro"] == "KSZL" or (m["other"] or {}).get("code") == "SZL" for m in every)   # Whiteman: never
+    assert day["posts"]["military"]["moves"] == [] and not any(m["group"] == "military" for m in every)
+    airports = day["posts"]["all"]["stats"]["airports"]
+    names = [a["name"] for a in airports]
+    assert "Downtown" not in names and "Johnson County Exec" not in names   # fewer than 5 movements each
+    assert airports[-1] == {"code": "OTHER", "name": "Other fields", "count": 2}
+
+
+def test_kc_lineup_and_chiefs_game_day(project):
+    k = cfg_for(project, "kc")
+    sc = formats.day_schedule(k, date(2026, 11, 6))
+    assert sc["running"] == ["commercial", "private", "all"]
+    assert sc["formats"] == {"commercial": "guess", "all": "scoreboard"}
+    # a Chiefs home game on Sun Nov 8 shows on Tuesday's posts (the 2-day lag)
+    assert formats.day_schedule(k, date(2026, 11, 10))["formats"]["private"] == "gameday"
+    assert "private" not in formats.day_schedule(k, date(2026, 11, 9))["formats"]
+    assert not k.slot_active("military", date(2026, 11, 6))
+    assert k.slot_active("wrap", date(2026, 11, 8)) and not k.slot_active("rivalry", date(2026, 11, 12))   # off until launch
+
+
+def test_kc_captions_tags_and_accounts(project):
+    k = cfg_for(project, "kc")
+    day = fl.build_day(k, fl.demo_raw(date(2026, 11, 4), k))
+    st = day["posts"]["commercial"]["stats"]
+    text = " ".join(o["text"] for o in captions.build_options(k, "commercial", st, date(2026, 11, 4)))
+    assert "Eppley" not in text and "Omaha" not in text and "KCI" in text
+    alltext = " ".join(o["text"] for o in captions.build_options(k, "all", day["posts"]["all"]["stats"], date(2026, 11, 4)))
+    assert "KCI, Downtown and Johnson County Exec" in alltext and "Offutt" not in alltext
+    tags = [h["tag"] for h in captions.hashtag_choices(k, "commercial", st)]
+    assert "#SkyBirdKC" in tags and not any("Omaha" in t or "Eppley" in t for t in tags)
+    assert captions.tiktok_priority(k, "commercial")[0] == "#SkyBirdKC"
+    handles = [m["handle"] for m in captions.mention_choices(k, "facebook", [], "commercial", st, date(2026, 11, 6))]
+    assert "@OMAairport" not in handles                       # never an Omaha account on a KC post
+    om = cfg_for(project)
+    assert "@OMAairport" in [m["handle"] for m in captions.mention_choices(om, "facebook", [], "commercial", st, date(2026, 11, 6))]
+    g = formats.caption_options("guess", {"guess": {"choices": ["Chicago", "Denver", "Dallas"]}}, date(2026, 11, 4),
+                                date(2026, 11, 6), k)[0]["text"]
+    assert "out of KCI" in g and "Eppley" not in g
+
+
+def test_omaha_data_moves_into_its_own_folder_once(project):
+    data = project / "cloud" / "data"
+    (data / "2026-11-04").mkdir(parents=True)
+    (data / "2026-11-04" / "state.json").write_text("{}")
+    (data / "flights").mkdir()
+    (data / "settings.json").write_text("{}")
+    (data / "aircraft_cache.json").write_text('{"a1": {"cls": "jet"}}')
+    c = cfg_for(project)
+    assert (data / "omaha" / "2026-11-04" / "state.json").exists() and (data / "omaha" / "settings.json").exists()
+    assert (data / "aircraft_cache.json").exists() and not (data / "omaha" / "aircraft_cache.json").exists()   # shared
+    assert not (data / "2026-11-04").exists()
+    assert cfg_for(project, "kc").data_dir == data / "kc"    # KC's folder is separate; Omaha's stays put
+    cfg_for(project)
+    assert (data / "omaha" / "2026-11-04" / "state.json").exists() and (data / "kc").is_dir()
+    assert c.shared_dir == data
+
+
+def test_pages_videos_per_city_and_old_layout_kept(tmp_path, monkeypatch):
+    import subprocess
+    from skybird.publishers import pages_host as ph
+
+    class S:
+        def get(self, url, **kw):
+            r = type("R", (), {})(); r.status_code = 206; r.headers = {"Content-Type": "video/mp4"}; r.close = lambda: None
+            return r
+    bare = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    monkeypatch.setenv("SKYBIRD_PAGES_REMOTE", str(bare))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "SkybirdTracker-a11y/skybird"); monkeypatch.setenv("GITHUB_TOKEN", "T")
+    v = tmp_path / "a.mp4"; v.write_bytes(b"x")
+    ph.publish([v], date(2026, 11, 4), S(), wait=5)                          # the old layout (before cities)
+    links = ph.publish([v], date(2026, 11, 5), S(), wait=5, city="omaha")
+    assert links["a.mp4"].endswith("/videos/omaha/2026-11-05/a.mp4")
+    ph.publish([v], date(2026, 11, 5), S(), wait=5, city="kc")
+    ph.publish_report("<p>r</p>", date(2026, 11, 5), city="omaha")
+    files = subprocess.run(["git", "--git-dir", str(bare), "ls-tree", "-r", "--name-only", "gh-pages"],
+                           capture_output=True, text=True).stdout.split()
+    assert {"videos/2026-11-04/a.mp4", "videos/omaha/2026-11-05/a.mp4", "videos/kc/2026-11-05/a.mp4",
+            "reports/omaha/latest.html", "reports/latest.html"} <= set(files)
+    ph.publish([v], date(2026, 11, 8), S(), wait=5, city="kc")               # 3 days later: old days drop off
+    files = subprocess.run(["git", "--git-dir", str(bare), "ls-tree", "-r", "--name-only", "gh-pages"],
+                           capture_output=True, text=True).stdout.split()
+    assert "videos/2026-11-04/a.mp4" not in files and "videos/kc/2026-11-08/a.mp4" in files
+
+
+def test_kc_day_makes_posts_only_for_kc_platforms(project, monkeypatch):
+    """A dry-run KC day: only KC's platforms (TikTok now), no military, no Instagram."""
+    from skybird import cloud, notify
+    k = cfg_for(project, "kc")
+    day = fl.build_day(k, fl.demo_raw(date(2026, 11, 4), k))
+
+    def fake_render(cfg_, post_date, **kw):
+        posts = {kk: v["stats"] for kk, v in day["posts"].items()}
+        f = cfg_.media_file(post_date, "stats.json"); f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"source": "opensky", "complete": True, "posts": posts}))
+        for s in cfg_.slots:
+            cfg_.media_file(post_date, s.file).write_bytes(b"x")
+        return True
+    monkeypatch.setattr(engine, "run_render", fake_render)
+    monkeypatch.setattr(notify, "send", lambda *a, **kw: None)
+    for key in ("OPENSKY_CLIENT_ID", "OPENSKY_CLIENT_SECRET", "BUFFER_API_KEY"):
+        monkeypatch.setenv(key, "x")
+    called = []
+    monkeypatch.setattr(cloud, "connect_buffer", lambda *a: called.append(1))
+    out = cloud.run(k, now=datetime(2026, 11, 6, 3, 40, tzinfo=k.tz))
+    from skybird.state import load_state
+    st = load_state(k, date(2026, 11, 6))
+    assert set(st["posts"]) == {"commercial", "private", "all"}
+    for post in st["posts"].values():
+        assert set(post["results"]) == {"tiktok"} and post["results"]["tiktok"]["id"] == "dry-run"
+    assert called == []                                       # dry run: Buffer never contacted
+    assert "Guess the destination" in st["posts"]["commercial"]["title"]
+    assert len(out["scheduled"]) == 3

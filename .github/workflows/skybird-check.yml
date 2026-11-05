@@ -18,6 +18,13 @@ concurrency:
 
 jobs:
   check:
+    # One job per city (cities/<city>.toml), one at a time so they share SkyBird's memory.
+    # Kansas City joins the list for its quiet build (dry run: it posts nothing).
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        city: [omaha]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -35,18 +42,18 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: cloud/data
-          key: skybird-data-${{ github.run_id }}
+          key: skybird-data-${{ github.run_id }}-${{ matrix.city }}
           restore-keys: skybird-data-
 
       - name: Ask Buffer whether the posts went out
         env:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-        run: python -m skybird --config cloud/config.toml cloud-run --check-posts
+        run: python -m skybird --config cloud/config.toml --city ${{ matrix.city }} cloud-run --check-posts
 
       - name: Save SkyBird's memory
         if: always()
         uses: actions/cache/save@v6
         with:
           path: cloud/data
-          key: skybird-data-${{ github.run_id }}
+          key: skybird-data-${{ github.run_id }}-${{ matrix.city }}

@@ -183,7 +183,7 @@ def prepare(cfg: Config, post_date: date, *, force: bool = False, render: bool =
             fmt = s_stats.get("format")   # a new format took this post's place (skybird/formats.py)
             tag_slot = formats.base_slot(fmt, slot.key) if fmt else slot.key
             evs = events_for(cfg, post_date, slot.key if slot.key in captions.SLOT_NOUN else "all")
-            options = (formats.caption_options(fmt, s_stats, data_date, post_date) if fmt
+            options = (formats.caption_options(fmt, s_stats, data_date, post_date, cfg) if fmt
                        else captions.build_options(cfg, slot.key, s_stats, data_date, evs))
             video = cfg.media_file(post_date, slot.file)
             prev = (existing or {}).get("posts", {}).get(slot.key, {})
@@ -201,7 +201,7 @@ def prepare(cfg: Config, post_date: date, *, force: bool = False, render: bool =
                 "caption": options[0]["text"],
                 "hashtags": (formats.hashtag_choices(cfg, fmt, tag_slot, s_stats, evs) if fmt
                              else captions.hashtag_choices(cfg, slot.key, s_stats, evs)),
-                "tiktok_priority": formats.TIKTOK[fmt] if fmt else captions.tiktok_priority(cfg, slot.key),
+                "tiktok_priority": [cfg.local(t) for t in formats.TIKTOK[fmt]] if fmt else captions.tiktok_priority(cfg, slot.key),
                 "mentions": {p: captions.mention_choices(cfg, p, evs, tag_slot, s_stats, post_date) for p in PLATFORMS},
                 "cta": options[0].get("cta", ""),
                 "platforms": {p: (p in slot.platforms and cfg.platform_enabled(p)) for p in PLATFORMS},

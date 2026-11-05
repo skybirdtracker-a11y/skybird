@@ -321,7 +321,7 @@ def run(cfg: Config, now: datetime | None = None, session=None) -> dict:
     link = ""
     try:
         from .publishers import pages_host
-        link = pages_host.publish_report(rep["html"], now.date())
+        link = pages_host.publish_report(rep["html"], now.date(), city=cfg.city_id if cfg.city else None)
     except Exception as e:
         print(f"Couldn't put the report on GitHub Pages: {e}")
         if os.environ.get("GITHUB_RUN_ID"):

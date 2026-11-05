@@ -97,3 +97,46 @@ Fixed dates under `[formats]` win over the rotation (the Lincoln game-weekend po
 Sunday after a Husker home game). If a concept can't be made on its day, the regular post goes
 out instead and the run shows a "New format" warning. The weekly report compares each concept
 with the regular posts. (Oct 28 – Nov 4 tested 1 to 4 posts a day; that test is over.)
+
+## Cities
+
+SkyBird runs one engine for several cities. Each city has a profile in `cities/<city>.toml`
+(Omaha is the default: every command without `--city` runs Omaha):
+
+| City | Profile | Status |
+|---|---|---|
+| Omaha | `cities/omaha.toml` | live on Facebook + TikTok |
+| Kansas City | `cities/kc.toml` | quiet build: `dry_run = true`, posts nothing |
+
+What a profile holds:
+- **Who it is:** name, brand ("SkyBird Kansas City"), handle, brand hashtag.
+- **Where it posts:** `platforms`, the platforms the city posts to. A city never posts anywhere
+  else, and never on another city's account.
+- **Its airports:** `[airports]` as `ICAO = [short name, role]`, with role hub, ga, business or
+  military. A city without a military field has no military post, and military flights are
+  left out of its counts entirely.
+- **What it never counts:** `exclude`, for example Kansas City's `KSZL`, Whiteman AFB: never
+  counted, never shown.
+- **Its map:** `map_center` and `towns` (the town labels on its map).
+- **Its own settings:** `[config.<section>]` replaces that section of `cloud/config.toml` for
+  the city, for example its post times (`[config.slots.*]`), hashtags and fixed lineup
+  (`[config.daily_formats]`).
+- **Accounts it may tag:** `[accounts]`. Airlines are shared by every city.
+- **Its events:** `events/<city>.toml`.
+
+Each city's files stay apart:
+- **Data:** `cloud/data/<city>/`.
+- **Videos:** `videos/<city>/<date>/` on GitHub Pages.
+- **Reports:** `reports/<city>/latest.html`. Omaha's report is also still at `reports/latest.html`.
+- **Shared:** the aircraft-type cache (`cloud/data/aircraft_cache.json`) is shared, since the
+  same jets fly into both cities.
+
+Any field with fewer than 5 takeoffs and landings is shown only as "Other fields".
+
+**To add a city:**
+1. Copy `cities/kc.toml` and change the values. Check every ICAO code in `airportsdata`.
+2. Add `events/<city>.toml`.
+3. Add the city to the `matrix: city:` list in the three workflows in `.github/workflows/`.
+4. Start it with `dry_run = true` and check a couple of weeks of sample videos before it posts.
+
+Run one city by hand with `python -m skybird --config cloud/config.toml --city kc cloud-run --dry-run`.

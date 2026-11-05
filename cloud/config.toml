@@ -89,6 +89,17 @@ file = "post5_wrap.mp4"
 platforms = ["instagram", "facebook", "tiktok"]
 days = ["sun"]
 
+# Thursdays: "Omaha vs. Kansas City: who flew more private jets this week?" Built only from
+# both cities' saved days (no OpenSky requests) and posted on both cities' accounts.
+# Off until Kansas City launches: set enabled = true here and in cities/kc.toml.
+[slots.rivalry]
+title = "Omaha vs. Kansas City"
+time = "15:00"
+file = "post6_rivalry.mp4"
+platforms = ["instagram", "facebook", "tiktok"]
+days = ["thu"]
+enabled = false
+
 # ---- New concepts (the test) ------------------------------------------------
 # 3 posts a day (9 AM, 11 AM, 6 PM) plus the Sunday wrap; Offutt is occasional. Each
 # day `per_day` of the 3 are swapped for new concepts. Which post stays regular rotates

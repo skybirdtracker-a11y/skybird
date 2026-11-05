@@ -63,14 +63,19 @@ def _rewrite(day: date, add, message: str) -> None:
             _git("checkout", "-q", "FETCH_HEAD", cwd=old)
         keep_from = day - timedelta(days=KEEP_DAYS - 1)
 
-        def keep_days(src: Path, dst: Path):
+        def keep_days(src: Path, dst: Path, since: date = keep_from):
             for d in sorted(src.glob("*")) if src.exists() else []:
                 try:
-                    if keep_from <= date.fromisoformat(d.name) <= day:
+                    if since <= date.fromisoformat(d.name) <= day:
                         shutil.copytree(d, dst / d.name)
                 except ValueError:
                     if d.is_dir() and src.name == "videos":   # a city's folder: videos/<city>/<date>/
-                        keep_days(d, dst / d.name)
+                        # a city in its quiet build keeps more days for its sample page (videos/<city>/.keep)
+                        n = (d / ".keep").read_text().strip() if (d / ".keep").exists() else ""
+                        if n.isdigit():
+                            (dst / d.name).mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(d / ".keep", dst / d.name / ".keep")
+                        keep_days(d, dst / d.name, day - timedelta(days=int(n) - 1) if n.isdigit() else keep_from)
         keep_days(old / "videos", new / "videos")
         if (old / "reports").exists():   # weekly reports stay for good (a few KB each)
             shutil.copytree(old / "reports", new / "reports")
@@ -86,9 +91,12 @@ def _rewrite(day: date, add, message: str) -> None:
         _git("push", "-q", "--force", remote, f"{BRANCH}:{BRANCH}", cwd=new)
 
 
-def publish(videos: list[Path], day: date, session=None, wait: int = WAIT, city: str | None = None) -> dict[str, str]:
+def publish(videos: list[Path], day: date, session=None, wait: int = WAIT, city: str | None = None,
+            keep_days: int | None = None, pages: dict[str, str] | None = None) -> dict[str, str]:
     """Put the videos on GitHub Pages (videos/<city>/<date>/); returns {file name: playable
-    link} once they're live."""
+    link} once they're live (wait=0: don't wait). `keep_days`: keep this city's videos that
+    many days instead of KEEP_DAYS. `pages`: other files to put up in the same push
+    ({"reports/kc/sample.html": html})."""
     s = session or requests.Session()
     sub = f"{city}/{day.isoformat()}" if city else day.isoformat()
 
@@ -99,9 +107,15 @@ def publish(videos: list[Path], day: date, session=None, wait: int = WAIT, city:
         target.mkdir(parents=True, exist_ok=True)
         for v in videos:
             shutil.copy2(v, target / v.name)
+        if keep_days and city:
+            (new / "videos" / city / ".keep").write_text(str(keep_days))
+        for path, text in (pages or {}).items():
+            (new / path).parent.mkdir(parents=True, exist_ok=True)
+            (new / path).write_text(text, encoding="utf-8")
     _rewrite(day, add, f"Videos for {city + ' ' if city else ''}{day.isoformat()}")
     links = {v.name: f"{base_url()}/videos/{sub}/{v.name}" for v in videos}
-    _wait_live(list(links.values()), s, wait)
+    if wait:
+        _wait_live(list(links.values()), s, wait)
     return links
 
 

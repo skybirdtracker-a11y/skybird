@@ -20,6 +20,7 @@ import os
 import statistics
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 from . import engine, notify
 from .config import Config
@@ -165,7 +166,9 @@ def buffer_table(cfg: Config) -> list[str]:
 def rows(cfg: Config, now: datetime) -> list[dict]:
     """One row per post per platform that has numbers."""
     out = []
-    for back in range(LOOKBACK_DAYS, -1, -1):
+    launch = cfg.city.get("launch_date") if cfg.city else None
+    lookback = max(LOOKBACK_DAYS, (now.date() - date.fromisoformat(str(launch))).days if launch else 0)
+    for back in range(lookback, -1, -1):
         day = now.date() - timedelta(days=back)
         st = load_state(cfg, day)
         if not st:
@@ -335,6 +338,10 @@ def build(cfg: Config, now: datetime) -> dict:
         if len(top) >= 2:
             winners.append(f"{name}: {top[0][0]} leads ({top[0][2]} vs {top[-1][2]} for {top[-1][0]})")
     lines += volume_tables(rs)
+    tc = traffic_check(cfg)
+    if tc:
+        lines += ["## Traffic check", "", tc, ""]
+    lines += launch_review(cfg, rs, now)
     lines += opensky_table(cfg)
     lines += buffer_table(cfg)
     ranked = sorted((r for r in week if r["index"] is not None), key=lambda r: -r["index"])
@@ -358,12 +365,14 @@ def build(cfg: Config, now: datetime) -> dict:
 
 
 def to_html(title: str, md: str) -> str:
-    """Tiny Markdown -> HTML (headings, bullets, tables, bold) in SkyBird colors."""
+    """Tiny Markdown -> HTML (headings, bullets, tables, bold, links) in SkyBird colors."""
     import re
     body, table = [], []
 
     def inline(s):
-        return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(s))
+        s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(s, quote=False))
+        s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s\"']+)\)", r"<a href='\2'>\1</a>", s)   # [text](link)
+        return s.replace("&lt;br&gt;", "<br>")
 
     def flush():
         if table:
@@ -447,3 +456,162 @@ def run(cfg: Config, now: datetime | None = None, session=None) -> dict:
                 "\n\nTap to open the full report.", click=link or None)
     rep.update(collected=n, problems=problems, link=link)
     return rep
+
+
+# ---- a city's quiet build and launch -----------------------------------------------------
+
+def _hub_moves(cfg: Config, posts: dict) -> int | None:
+    """All takeoffs and landings at the hub that day (airlines, cargo, private), from the 'all' post."""
+    short = cfg.hub[1:] if len(cfg.hub) == 4 else cfg.hub
+    for a in ((posts.get("all") or {}).get("airports") or []):
+        if a.get("code") in (cfg.hub, short) or a.get("name") == cfg.hub_name:
+            return a.get("count")
+    return None
+
+
+def record_day(cfg: Config, post_date: date) -> dict:
+    """Keep the day's counts (cloud/data/<city>/daily_counts.json, 60 days): the videos and
+    their stats.json aren't kept between runs, the sample page and reports need the numbers."""
+    import json
+    try:
+        st = json.loads(cfg.media_file(post_date, "stats.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    posts = st.get("posts") or {}
+    hub = st.get("hub") or {}
+    row = {"data_date": st.get("data_date") or cfg.data_date(post_date).isoformat(),
+           "hub_moves": _hub_moves(cfg, posts), "airline_departures": hub.get("departures"),
+           "airline_arrivals": hub.get("arrivals"), "complete": bool(st.get("complete", True)),
+           "opensky": st.get("opensky_requests", "")}
+    path = cfg.data_dir / "daily_counts.json"
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    saved[post_date.isoformat()] = row
+    keep = sorted(saved)[-60:]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({k: saved[k] for k in keep}, indent=1), encoding="utf-8")
+    return row
+
+
+def daily_counts(cfg: Config) -> dict:
+    import json
+    try:
+        return json.loads((cfg.data_dir / "daily_counts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def traffic_check(cfg: Config, days: int = 14) -> str:
+    """SkyBird's average day at the hub against the airport's own published traffic
+    ([traffic] in the city profile: monthly_ops and its source). '' if there's no reference."""
+    ref = cfg.city.get("traffic") or {}
+    monthly = ref.get("monthly_ops")
+    counts = [r["hub_moves"] for _, r in sorted(daily_counts(cfg).items())[-days:] if r.get("hub_moves")]
+    if not monthly or not counts:
+        return ""
+    ours, theirs = statistics.mean(counts), float(monthly) * 12 / 365
+    pct = round(100 * ours / theirs)
+    lo, hi = ref.get("low_pct", 70), ref.get("high_pct", 115)
+    verdict = ("in line" if lo <= pct <= hi else
+               "LOW: OpenSky may be missing flights; check before launch" if pct < lo else
+               "HIGH: something may be counted twice; check before launch")
+    return (f"{cfg.hub_name} traffic check: SkyBird averages {ours:,.0f} takeoffs and landings a day over "
+            f"{len(counts)} days; {cfg.hub_name} reports about {theirs:,.0f} a day "
+            f"({int(monthly):,} a month, {ref.get('source', 'airport statistics')}). {pct}%: {verdict} "
+            f"(expected {lo}–{hi}%: OpenSky misses some small planes).")
+
+
+def sample_page(cfg: Config, now: datetime, base: str = "") -> str:
+    """The quiet build's sample: every dry-run day so far, what would have posted, the video
+    (last week), the counts, the traffic check and OpenSky use."""
+    counts = daily_counts(cfg)
+    start = cfg.city.get("quiet_build_start") or ""
+    keep = int(cfg.city.get("sample_days", 7))
+    days = [d for d in sorted(counts) if d >= start][-int(cfg.city.get("quiet_build_days", 14)):]
+    lines = [f"# {cfg.city.get('brand', cfg.city_name)}: quiet-build sample", "",
+             f"Quiet build: dry run, nothing posts. Day {len(days)} of {cfg.city.get('quiet_build_days', 14)}. "
+             f"Videos are kept for the last {keep} days.", ""]
+    tc = traffic_check(cfg)
+    if tc:
+        lines += [tc, ""]
+    lines += ["| Post date | Flights from | " + f"{cfg.hub_name} moves | Airline dep / arr | Would post |", "|---|---|---:|---:|---|"]
+    for d in reversed(days):
+        r = counts[d]
+        st = load_state(cfg, date.fromisoformat(d)) or {}
+        recent = date.fromisoformat(d) >= now.date() - timedelta(days=keep - 1)
+        posts = []
+        slot_time = {sl.key: sl.time for sl in cfg.slots}
+        for k, p in sorted((st.get("posts") or {}).items(), key=lambda kv: str(slot_time.get(kv[0], ""))):
+            if not (p.get("results") or p.get("video_exists")):
+                continue
+            t = engine._ts(p.get("posted_at"))
+            when = (t.strftime("%I:%M %p") if t else slot_time[k].strftime("%I:%M %p") if k in slot_time else "").lstrip("0")
+            name = Path(p.get("video") or "").name
+            link = f"[{p.get('title', k)}]({base}/videos/{cfg.city_id}/{d}/{name})" if recent and name and base \
+                else p.get("title", k)
+            posts.append(f"{when} {link}")
+        flag = "" if r.get("complete", True) else " ⚠️ incomplete"
+        lines.append(f"| {d} | {r.get('data_date', '')}{flag} | {r.get('hub_moves') or '–'} | "
+                     f"{r.get('airline_departures', '–')} / {r.get('airline_arrivals', '–')} | {'<br>'.join(posts) or '–'} |")
+    lines.append("")
+    lines += opensky_table(cfg)
+    return to_html(f"{cfg.city_name} sample", "\n".join(lines))
+
+
+REVIEW = {"review_day": 30, "keep_pct": 25, "keep_views": 150, "viral_views": 3000, "facebook_daily": 1400}
+
+
+def launch_review(cfg: Config, rs: list[dict], now: datetime) -> list[str]:
+    """The day-30 review of a city's launch (launch_date in its profile):
+    - keep a channel if its average views per post are at least keep_pct (25%) of the city's
+      best channel, or at least keep_views (150);
+    - success = TikTok views grew week over week (the last full week beat the one before)
+      AND one post passed viral_views (3,000);
+    - Facebook, if on, must average facebook_daily (1,400) views a day."""
+    launch = cfg.city.get("launch_date")
+    if not launch:
+        return []
+    launch = date.fromisoformat(str(launch))
+    c = dict(REVIEW, **(cfg.city.get("review") or {}))
+    day_n = (now.date() - launch).days + 1
+    if day_n < 1:
+        return []
+    mine = [r for r in rs if r["day"] >= launch and r["views"] is not None]
+    lines = [f"## {cfg.city_name} launch review", ""]
+    final = day_n >= c["review_day"]
+    lines.append(f"Day {day_n} of {c['review_day']}" + (": the review." if final else ": so far (decided on day "
+                 f"{c['review_day']}, {(launch + timedelta(days=c['review_day'] - 1)):%b %-d})."))
+    lines.append("")
+    if not mine:
+        return lines + ["No numbers from Buffer yet.", ""]
+    avg = {p: statistics.mean(r["views"] for r in mine if r["platform"] == p) for p in {r["platform"] for r in mine}}
+    best = max(avg.values())
+    lines += ["| Channel | Posts | Avg views | vs best | Keep? |", "|---|---:|---:|---:|---|"]
+    for p, a in sorted(avg.items(), key=lambda x: -x[1]):
+        keep = a >= c["keep_pct"] / 100 * best or a >= c["keep_views"]
+        n = sum(1 for r in mine if r["platform"] == p)
+        lines.append(f"| {p.title()} | {n} | {a:,.0f} | {round(100 * a / best) if best else 0}% | "
+                     f"{'keep' if keep else 'drop' if final else 'below the bar'} |")
+    # TikTok week over week (weeks counted from launch)
+    tt = [r for r in mine if r["platform"] == "tiktok"]
+    weeks: dict[int, int] = {}
+    for r in tt:
+        weeks[(r["day"] - launch).days // 7] = weeks.get((r["day"] - launch).days // 7, 0) + r["views"]
+    full = [weeks.get(w, 0) for w in range(max(0, (now.date() - launch).days // 7))]
+    grew = len(full) >= 2 and full[-1] > full[-2]   # the last full week beat the week before
+    top = max((r["views"] for r in mine), default=0)
+    lines += ["", f"TikTok views by week: {', '.join(f'{v:,}' for v in full) or 'no full week yet'} "
+              f"({'grew week over week' if grew else 'did not grow last week' if len(full) >= 2 else 'too early'}).",
+              f"Best post: {top:,} views (the bar is {c['viral_views']:,})."]
+    ok = grew and top >= c["viral_views"]
+    fb = [r for r in mine if r["platform"] == "facebook"]
+    if fb:
+        per_day = sum(r["views"] for r in fb) / max(1, min(day_n, (now.date() - launch).days + 1))
+        fb_ok = per_day >= c["facebook_daily"]
+        ok = ok and fb_ok
+        lines.append(f"Facebook: {per_day:,.0f} views a day (needs {c['facebook_daily']:,}): {'met' if fb_ok else 'not met'}.")
+    lines += ["", f"**{'Success' if ok else 'Not there yet' if not final else 'Did not meet the bar'}**"
+              + (" (final)." if final else " (so far)."), ""]
+    return lines

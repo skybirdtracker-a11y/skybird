@@ -141,7 +141,7 @@ SkyBird runs one engine for several cities. Each city has a profile in `cities/<
 | City | Profile | Status |
 |---|---|---|
 | Omaha | `cities/omaha.toml` | live on Facebook + TikTok |
-| Kansas City | `cities/kc.toml` | quiet build: `dry_run = true`, posts nothing |
+| Kansas City | `cities/kc.toml` | quiet build from Nov 6, 2026: `dry_run = true`, posts nothing |
 
 What a profile holds:
 - **Who it is:** name, brand ("SkyBird Kansas City"), handle, brand hashtag.
@@ -178,6 +178,43 @@ Any field with fewer than 5 takeoffs and landings is shown only as "Other fields
 4. Start it with `dry_run = true` and check a couple of weeks of sample videos before it posts.
 
 Run one city by hand with `python -m skybird --config cloud/config.toml --city kc cloud-run --dry-run`.
+
+### Kansas City: quiet build, launch, day-30 review
+
+**Quiet build (14 days, dry run).** Kansas City runs every day with Omaha, right after it,
+but posts nothing. Each morning:
+- **Sample page:** its videos and a sample page go on GitHub Pages at
+  `reports/kc/sample.html`.
+  - The page lists every day so far: what would have posted and when, linked to the video
+    (videos are kept for 7 days), KCI's counts, and OpenSky use.
+  - The morning notification links to it.
+- **Traffic check:** compares SkyBird's average day at KCI with KCI's own published traffic.
+  - The reference is `[traffic]` in `cities/kc.toml`: about 9,750 operations a month, from
+    117,030 in 2025. Confirm it against flykc.com's traffic statistics.
+  - Expected range: 70–115%, since OpenSky misses some small planes. Outside it, the check
+    says LOW or HIGH. Look into that before launch.
+- **OpenSky use** for KC shows on the sample page and in the weekly report. It counts
+  against the shared OpenSky budget.
+
+**Launch** (when you say so):
+1. In Buffer, connect Kansas City's TikTok (done Nov 4, 2026, replacing Omaha's paused
+   Instagram).
+2. Its channel ID goes under `[buffer_channels]` in `cities/kc.toml`. Kansas City's TikTok,
+   `6aebeae4e29c69a171682de3`, is already there.
+3. In `cities/kc.toml`, set `dry_run = false` and `launch_date = "YYYY-MM-DD"` (the first
+   post day).
+
+Kansas City then posts 3 times a day, 15 minutes after Omaha's posts (9:15, 11:15 and 6:15).
+
+**Day-30 review.** From the launch date, the weekly report has a "Kansas City launch review"
+section. It shows progress until day 30, then the verdict. The bars are in `[review]` in
+`cities/kc.toml`:
+- **Channels:** keep a channel if its average views per post are at least 25% of the best
+  KC channel's, or at least 150.
+- **Success** means both of these:
+  - TikTok views grew week over week: the last full week beat the one before.
+  - At least one post passed 3,000 views.
+- **Facebook**, if turned on, must also average at least 1,400 views a day.
 
 ## OpenSky budget
 

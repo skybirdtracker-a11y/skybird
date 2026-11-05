@@ -86,15 +86,22 @@ class BufferLedger:
         self.save()
 
     def note(self, headers, body: dict, status: int) -> None:
-        """What Buffer said about its rate windows: under backoff_pct left -> back off until it resets."""
+        """What Buffer said about its rate windows: under backoff_pct left -> back off until it resets.
+        Buffer reports each window's `remaining` and `resetSeconds` but not its size, so the size
+        is taken as the most ever seen remaining in that window (kept in _window_max)."""
         from .publishers.buffer import rate_windows
         wins = rate_windows(headers, body)
         if status == 429 and not wins:
             wins = [{"limit": 1, "remaining": 0, "reset_seconds": 15 * 60}]
-        low = [w for w in wins if w.get("limit") and w["remaining"] < self.caps["backoff_pct"] / 100 * w["limit"]]
         if not wins:
             return
         self.load()
+        seen = self.data.setdefault("_window_max", {})
+        for i, w in enumerate(wins):
+            seen[str(i)] = max(int(seen.get(str(i), 0)), int(w["remaining"]))
+            if not w.get("limit"):
+                w["limit"] = seen[str(i)]
+        low = [w for w in wins if w.get("limit") and w["remaining"] < self.caps["backoff_pct"] / 100 * w["limit"]]
         self.day()["rate"] = [dict(w, at=self.now().isoformat(timespec="minutes")) for w in wins]
         if low:
             secs = max(int(w.get("reset_seconds") or 15 * 60) for w in low)

@@ -167,6 +167,24 @@ def test_backs_off_under_20_percent_of_a_rate_window(project):
     assert ext == [{"limit": 50, "remaining": 40, "reset_seconds": 30}]
 
 
+def test_backs_off_when_buffer_gives_no_window_size(project):
+    """Buffer's rateLimit entries carry remaining + resetSeconds only: the size is the most seen."""
+    lg = buffer_ledger.use(cfg_for(project))
+
+    def answer(rem):
+        class S(Sess):
+            def post(self, url, json=None, **kw):
+                r = Resp({"ok": 1})
+                r._b["extensions"] = {"rateLimit": [{"remaining": rem, "resetSeconds": 900},
+                                                    {"remaining": 2000, "resetSeconds": 1000000}]}
+                return r
+        return S()
+    buffer.gql("key", "query { a }", session=answer(149))
+    assert not lg.backing_off()
+    buffer.gql("key", "query { a }", session=answer(25))                  # 25 of ~149 left: under 20%
+    assert lg.backing_off()
+
+
 def test_numbers_for_many_posts_in_one_call(project):
     buffer_ledger.use(cfg_for(project))
     buffer._SHAPE["post"] = {"arg": "input: {id: %s}", "fields": "id status", "metrics": "metrics { type value }"}

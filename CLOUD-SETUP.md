@@ -197,10 +197,10 @@ but posts nothing. Each morning:
   against the shared OpenSky budget.
 
 **Launch** (when you say so):
-1. In Buffer, connect Kansas City's TikTok. The free plan has 3 channels, so a paused one
-   (Instagram) has to be disconnected first.
-2. Add the `BUFFER_CHANNEL_KC_TIKTOK` secret. Get its value from the "Only look up the Buffer
-   channels" run.
+1. In Buffer, connect Kansas City's TikTok (done Nov 4, 2026, replacing Omaha's paused
+   Instagram).
+2. Its channel ID goes under `[buffer_channels]` in `cities/kc.toml`. Kansas City's TikTok,
+   `6aebeae4e29c69a171682de3`, is already there.
 3. In `cities/kc.toml`, set `dry_run = false` and `launch_date = "YYYY-MM-DD"` (the first
    post day).
 

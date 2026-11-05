@@ -17,8 +17,8 @@ dry_run = true
 quiet_build_start = "2026-11-06"
 quiet_build_days = 14
 sample_days = 7
-# Launch: set launch_date (the first post day) and dry_run = false, and add the
-# BUFFER_CHANNEL_KC_TIKTOK secret. 3 posts a day, 15 minutes after Omaha's (see [config.slots]).
+# Launch: set launch_date (the first post day) and dry_run = false (its TikTok channel is
+# already under [buffer_channels]). 3 posts a day, 15 minutes after Omaha's (see [config.slots]).
 # The weekly report then runs the day-30 review ([review] below).
 launch_date = ""
 # Map: centered on downtown, with KCI north of the river

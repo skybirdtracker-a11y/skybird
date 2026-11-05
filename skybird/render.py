@@ -1266,6 +1266,33 @@ def _complete(cfg: Config, flight_day: date, master: Path) -> bool:
     return got >= end - end % 86400 + 86400
 
 
+def _complete_day(cfg: Config, raw: list, flight_day: date, session, master: Path):
+    """Fix up a fresh pull (airline ends filed at small fields, missed landings), look up
+    the private planes' types, and save it as the day's master list."""
+    from_opensky = fl.eppley_arrivals(cfg, raw)
+    fl.fix_airline_fields(cfg, raw)
+    after_fix = fl.eppley_arrivals(cfg, raw)
+    lists = fl._lists(cfg)
+    deps = sum(1 for f in raw if f.get("estDepartureAirport") == cfg.hub != f.get("estArrivalAirport")
+               and fl.classify(f, *lists) == "commercial")
+    if deps and after_fix >= 0.95 * deps:
+        # OpenSky's own arrival list is already complete (normal now that the posts show
+        # two days back): skip the fill-in, which would cost ~120 requests for nothing.
+        log(cfg, f"{cfg.hub_name} arrivals look complete ({after_fix} vs {deps} departures); no fill-in needed")
+    else:
+        raw += fl.infer_arrivals(cfg, raw, flight_day, session)
+    breakdown = {"from_opensky": from_opensky, "moved_from_council_bluffs": after_fix - from_opensky,
+                 "filled_in": fl.eppley_arrivals(cfg, raw) - after_fix}
+    breakdown["total"] = sum(breakdown.values())
+    info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), session)   # type lookups: private planes only
+    master.parent.mkdir(parents=True, exist_ok=True)
+    master.write_text(json.dumps({"flights": raw, "eppley_arrivals": breakdown,
+                                  "fetched_at": int(time.time())}), encoding="utf-8")
+    for old in sorted(master.parent.glob("*.json"))[:-45]:   # keep 45 days (weekly + holiday formats)
+        old.unlink(missing_ok=True)
+    return raw, info, breakdown
+
+
 def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[str] | None = None) -> Path:
     """Fetch the flight day shown on `post_date` and write the reels + stats.json."""
     import requests
@@ -1292,28 +1319,25 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         # 1. All planes: ONE pull of every flight at the metro fields, made complete
         #    (Council Bluffs fix + landings OpenSky missed). This master list is saved and
         #    every post (and any remake today) is cut from it.
-        raw = fl.fetch_opensky(cfg, flight_day, session)
-        from_opensky = fl.eppley_arrivals(cfg, raw)
-        fl.fix_airline_fields(cfg, raw)
-        after_fix = fl.eppley_arrivals(cfg, raw)
-        lists = fl._lists(cfg)
-        deps = sum(1 for f in raw if f.get("estDepartureAirport") == cfg.hub != f.get("estArrivalAirport")
-                   and fl.classify(f, *lists) == "commercial")
-        if deps and after_fix >= 0.95 * deps:
-            # OpenSky's own arrival list is already complete (normal now that the posts show
-            # two days back): skip the fill-in, which would cost ~120 requests for nothing.
-            log(cfg, f"{cfg.hub_name} arrivals look complete ({after_fix} vs {deps} departures); no fill-in needed")
+        try:
+            raw = fl.fetch_opensky(cfg, flight_day, session)
+        except fl.DataError as e:
+            if not master.exists():
+                raise
+            # OpenSky said no (its daily limit, or SkyBird's): use the list saved earlier
+            log(cfg, f"OpenSky can't be asked now ({e}); using the flight list saved earlier for {flight_day}")
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(f"::warning title=OpenSky::{str(e)[:400]} Using the flight list saved earlier.")
+            saved = json.loads(master.read_text(encoding="utf-8"))
+            raw = None
+        if raw is None:
+            raw, breakdown = saved["flights"], saved.get("eppley_arrivals", {})
+            info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), None)
+            session = None
         else:
-            raw += fl.infer_arrivals(cfg, raw, flight_day, session)
-        breakdown = {"from_opensky": from_opensky, "moved_from_council_bluffs": after_fix - from_opensky,
-                     "filled_in": fl.eppley_arrivals(cfg, raw) - after_fix}
-        breakdown["total"] = sum(breakdown.values())
-        info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), session)   # type lookups: private planes only
-        master.parent.mkdir(parents=True, exist_ok=True)
-        master.write_text(json.dumps({"flights": raw, "eppley_arrivals": breakdown,
-                                      "fetched_at": int(time.time())}), encoding="utf-8")
-        for old in sorted(master.parent.glob("*.json"))[:-45]:   # keep 45 days (weekly + holiday formats)
-            old.unlink(missing_ok=True)
+            from .budget import ledger
+            ledger(cfg).lists_done()   # this city has its day: lower-priority requests may use the rest
+            raw, info, breakdown = _complete_day(cfg, raw, flight_day, session, master)
     _save_flight_list(cfg, post_date, flight_day, raw)
     day = fl.build_day(cfg, raw, info)
     week = fl.military_week(cfg, flight_day, day["posts"]["military"]["stats"]["flights"],
@@ -1382,6 +1406,12 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     stats["inferred_arrivals"] = sum(1 for f in raw if f.get("inferred"))
     stats["eppley_arrivals"] = breakdown
     stats["opensky_requests"] = fl.requests_used() if not demo else "0 (sample data)"
+    if not demo:
+        from .budget import ledger
+        lg = ledger(cfg)
+        stats["opensky_requests"] += (f"; today so far {lg.used():,} of {int(lg.caps['per_city']):,} for {cfg.city_name}, "
+                                      f"{lg.total():,} of {int(lg.caps['total']):,} for all cities"
+                                      + (f", OpenSky says {lg.day()['remaining']:,} left" if lg.day().get("remaining") is not None else ""))
     cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     fonts = Fonts()
     # Made in this order: All planes first (the full picture), then Eppley, private, military.

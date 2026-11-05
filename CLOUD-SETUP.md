@@ -140,3 +140,33 @@ Any field with fewer than 5 takeoffs and landings is shown only as "Other fields
 4. Start it with `dry_run = true` and check a couple of weeks of sample videos before it posts.
 
 Run one city by hand with `python -m skybird --config cloud/config.toml --city kc cloud-run --dry-run`.
+
+## OpenSky budget
+
+The OpenSky account allows about **4,000 requests a day**, shared by every city. SkyBird
+counts every request in `cloud/data/opensky_ledger.json` (per day, city and category, shared
+by all runs) and stops itself before a limit:
+
+| Limit per day | Default |
+|---|---|
+| All of SkyBird | 3,999 (never above the account's 4,000) |
+| Each city | 1,600: flight lists 40, arrival fill-in 600, aircraft types 400, backfill 60, the rest headroom |
+| Shared reserve | what's left (manual runs from the Actions tab may use it) |
+
+The limits are under `[opensky_budget]` in `cloud/config.toml`, so changing them needs no code change.
+
+How the limits are applied:
+- **Flight lists come first.** Fill-in, type lookups and backfill stop before they could use
+  the requests another city still needs for its day's lists.
+- **OpenSky's own count wins.** SkyBird reads the `X-Rate-Limit-Remaining` header on every answer.
+  - Under 400 left, fill-in and type lookups stop.
+  - Under 100 left, only a city that doesn't have its day yet may pull its lists.
+- **A 429 ("limit reached")** stops all OpenSky work until the reset, and the run uses the flight
+  list it saved earlier. The 429's retry time lines the ledger's day up with OpenSky's reset.
+- **Alerts:** a phone alert goes out when a day passes 80% of a limit: 3,200 for all cities, 1,280 for one city.
+- **Where to see it:**
+  - Each run's notes show the day's use so far.
+  - The weekly report has an "OpenSky use" table.
+
+Anything else using the same OpenSky account, such as a manual test or the old PC version,
+counts against the same 4,000. SkyBird only sees that through OpenSky's header, so keep other use low.

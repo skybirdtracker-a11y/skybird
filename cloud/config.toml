@@ -142,6 +142,26 @@ hours = 1
 [posts_on]
 "2026-10-30" = ["private"]    # 1-post day: private jets instead of Offutt
 
+# ---- OpenSky budget (requests per day; ceilings, not targets) ----------------------
+# Every request is counted per day, city and category in cloud/data/opensky_ledger.json,
+# shared by every run and city. The account allows 4,000 a day; `total` can never go
+# above 3,999. Anything else using the same OpenSky account (a manual test, the old PC
+# version) counts against the same 4,000, so SkyBird also reads OpenSky's own count:
+# under `low_remaining` left it stops fill-in and type lookups; under
+# `critical_remaining` only flight lists for a city that doesn't have its day yet.
+# Manual runs may also use the shared reserve (total minus the cities' limits).
+[opensky_budget]
+total = 3999
+per_city = 1600
+lists = 40          # each city's core flight lists (one per airport and direction)
+fill_in = 600       # arrival fill-in lookups
+types = 400         # aircraft-type lookups (the cache is shared, so repeat planes cost nothing)
+backfill = 60       # one-time history backfill (e.g. Offutt's 7-day counts)
+low_remaining = 400
+critical_remaining = 100
+alert_pct = 80      # phone alert when a day passes 80% of a limit
+keep_for_lists = 40 # held back for each city that hasn't pulled its day's lists yet
+
 # ---- How posts get published ----------------------------------------------
 [publisher]
 # "buffer"      = through buffer.com's FREE plan (3 channels = IG + FB + TikTok). No developer

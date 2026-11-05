@@ -179,6 +179,27 @@ def volume_tables(rs: list[dict]) -> list[str]:
     return lines
 
 
+def opensky_table(cfg: Config) -> list[str]:
+    """OpenSky requests per day for the last 7 ledger days: this city by category, all cities."""
+    from .budget import CATEGORIES, Ledger
+    lg = Ledger(cfg)
+    days = lg.summary(7)
+    if not days:
+        return []
+    lines = ["## OpenSky use (last 7 days)", "",
+             f"| Day | {cfg.city_name} | Lists | Fill-in | Types | Backfill | All cities | OpenSky left |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    for d in days:
+        mine = d.get("cities", {}).get(cfg.city_id, {})
+        lines.append(f"| {d['day']} | {sum(mine.values()):,} | " + " | ".join(str(mine.get(c, 0)) for c in CATEGORIES)
+                     + f" | {d.get('total', 0):,} | {d['remaining'] if d.get('remaining') is not None else '–'}"
+                     + (" (429)" if d.get("blocked") else "") + " |")
+    caps = lg.caps
+    lines += ["", f"Limits per day: {int(caps['per_city']):,} per city, {int(caps['total']):,} for all cities "
+              f"(the account allows 4,000). Alerts at {caps['alert_pct']}%.", ""]
+    return lines
+
+
 def build(cfg: Config, now: datetime) -> dict:
     """The report as {"title", "summary" (phone text), "markdown", "html"}."""
     rs = rows(cfg, now)
@@ -232,6 +253,7 @@ def build(cfg: Config, now: datetime) -> dict:
         if len(top) >= 2:
             winners.append(f"{name}: {top[0][0]} leads ({top[0][2]} vs {top[-1][2]} for {top[-1][0]})")
     lines += volume_tables(rs)
+    lines += opensky_table(cfg)
     ranked = sorted((r for r in week if r["index"] is not None), key=lambda r: -r["index"])
     if ranked:
         lines += ["## Best and worst this week", "", "| Post | Platform | Views | Index |", "|---|---|---:|---:|"]

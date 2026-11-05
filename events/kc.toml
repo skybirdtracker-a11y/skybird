@@ -1,0 +1,56 @@
+# SkyBird - Kansas City event calendar. Same fields as events/omaha.toml.
+# PLACEHOLDER DATES: the owner confirms each one (confirmed = false until checked).
+# KC event posts use the normal 2-day lag: a Sunday game shows on Tuesday's posts.
+
+[[event]]
+name = "Chiefs home game (Arrowhead)"
+start = 2026-11-08
+end = 2026-11-08
+confirmed = false
+priority = 3
+slots = ["private", "all"]
+gameday = true          # the private post becomes "Chiefs game-day private jets" (posted with the lag)
+hook = "🏈 Chiefs game day at Arrowhead. The private jets came in."
+hashtags = ["#ChiefsKingdom", "#Chiefs"]
+
+[[event]]
+name = "Chiefs home game (Arrowhead)"
+start = 2026-11-22
+end = 2026-11-22
+confirmed = false
+priority = 3
+slots = ["private", "all"]
+gameday = true
+hook = "🏈 Chiefs game day at Arrowhead. The private jets came in."
+hashtags = ["#ChiefsKingdom", "#Chiefs"]
+
+[[event]]
+name = "Chiefs home game (Arrowhead)"
+start = 2026-12-06
+end = 2026-12-06
+confirmed = false
+priority = 3
+slots = ["private", "all"]
+gameday = true
+hook = "🏈 Chiefs game day at Arrowhead. The private jets came in."
+hashtags = ["#ChiefsKingdom", "#Chiefs"]
+
+[[event]]
+name = "Big 12 men's basketball tournament (T-Mobile Center)"
+start = 2027-03-09
+end = 2027-03-13
+confirmed = false
+priority = 3
+slots = ["all_posts"]
+hook = "🏀 Big 12 tournament week in Kansas City."
+hashtags = ["#Big12MBB", "#Big12"]
+
+[[event]]
+name = "Royals home opener (Kauffman Stadium)"
+start = 2027-04-01
+end = 2027-04-01
+confirmed = false
+priority = 3
+slots = ["all_posts"]
+hook = "⚾ Royals home opener at the K."
+hashtags = ["#Royals", "#OpeningDay"]

@@ -72,6 +72,13 @@ concurrency:
 
 jobs:
   daily:
+    # One job per city (cities/<city>.toml), one at a time so they share SkyBird's memory.
+    # Kansas City joins the list for its quiet build (dry run: it posts nothing).
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        city: [omaha]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -83,14 +90,14 @@ jobs:
           if [ ! -f requirements.txt ]; then
             found=$(find . -name requirements.txt -not -path './.git/*' | head -1)
             if [ -z "$found" ]; then
-              echo "::error::SkyBird's files aren't in this repository. Upload the skybird and cloud folders, events.toml and requirements.txt."
+              echo "::error::SkyBird's files aren't in this repository. Upload the skybird, cloud, cities and events folders and requirements.txt."
               exit 1
             fi
             dir=$(dirname "$found")
             echo "SkyBird's files are in $dir; using them from there."
             cp -r "$dir"/. .
           fi
-          for f in skybird cloud/config.toml events.toml; do
+          for f in skybird cloud/config.toml cities events; do
             [ -e "$f" ] || { echo "::error::Missing $f. Upload it to the repository."; exit 1; }
           done
 
@@ -106,7 +113,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: cloud/data
-          key: skybird-data-${{ github.run_id }}
+          key: skybird-data-${{ github.run_id }}-${{ matrix.city }}
           restore-keys: skybird-data-
 
       - name: Make the videos and schedule them in Buffer
@@ -121,7 +128,7 @@ jobs:
           POST_TIME: ${{ inputs.post_time }}
         run: |
           only="${ONLY%% *}"; [ "$only" = "every" ] && only=""
-          python -m skybird --config cloud/config.toml cloud-run \
+          python -m skybird --config cloud/config.toml --city ${{ matrix.city }} cloud-run \
             ${{ inputs.force && '--force' || '' }} ${{ inputs.dry_run && '--dry-run' || '' }} \
             --only "$only" --day "$DAY" --at "$POST_TIME" ${{ inputs.check_hosts && '--check-hosts' || '' }} ${{ inputs.test_notification && '--test-notify' || '' }} ${{ inputs.fresh_data && '--fresh-data' || '' }} ${{ inputs.probe_board && '--probe-board' || '' }} ${{ inputs.check_opensky && '--check-opensky' || '' }}
 
@@ -130,16 +137,16 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: cloud/data
-          key: skybird-data-${{ github.run_id }}
+          key: skybird-data-${{ github.run_id }}-${{ matrix.city }}
 
       - name: Keep today's videos for 3 days (download them from this run's page)
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: skybird-videos-${{ github.run_number }}
+          name: skybird-videos-${{ github.run_number }}-${{ matrix.city }}
           path: |
-            cloud/videos/*.mp4
-            cloud/videos/*flights.json
-            cloud/videos/*stats.json
+            cloud/videos/${{ matrix.city }}/*.mp4
+            cloud/videos/${{ matrix.city }}/*flights.json
+            cloud/videos/${{ matrix.city }}/*stats.json
           retention-days: 3
           if-no-files-found: ignore

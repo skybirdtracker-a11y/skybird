@@ -32,7 +32,8 @@ NAVY, BIRD, SKY, ORANGE, MINT = "#014291", "#0999EA", "#1E8BE0", "#F28F23", "#AE
 CLOUD, INK, MUTED, LINE, ICE, SEA, FOREIGN, WHITE = ("#F6F2E7", "#0A2540", "#46607A", "#D9DEE5",
                                                      "#E6F3FC", "#F3F7FB", "#EEF2F6", "#FFFFFF")
 FILES = {"commercial": "post1_commercial.mp4", "private": "post2_private.mp4",
-         "military": "post3_military.mp4", "all": "post4_all.mp4", "wrap": "post5_wrap.mp4"}
+         "military": "post3_military.mp4", "all": "post4_all.mp4", "wrap": "post5_wrap.mp4",
+         "rivalry": "post6_rivalry.mp4"}
 ASSETS = Path(__file__).parent / "assets"
 
 POSTS = {
@@ -65,10 +66,33 @@ FORMAT_SPECS = {
                 "arr": ("Who flew in for", "the weekend?"), "stats": ("The weekend,", "by the numbers."),
                 "by_group": True, "colors": POSTS["private"]["colors"], "legend": POSTS["private"]["legend"]},
     "wrap": {"kicker": "THE WEEK · METRO", "fields": ["KOMA"], "stats": ("Omaha's week,", "by the numbers.")},
+    "gameday": {"kicker": "GAME DAY · METRO", "fields": ["KOMA", "KMLE", "KCBF"],
+                "arr": ("Who flew in", "for the game?"), "stats": ("Game day,", "by the numbers."),
+                "by_group": True, "colors": POSTS["private"]["colors"], "legend": POSTS["private"]["legend"]},
+    "rivalry": {"kicker": "THE RIVALRY", "fields": ["KOMA"], "stats": ("Omaha vs.", "Kansas City.")},
     "lincoln": {"kicker": "GAME WEEKEND · LINCOLN", "fields": ["KLNK"],
                 "arr": ("Who flew in for", "the Huskers?"), "stats": ("Game weekend,", "by the numbers."),
                 "by_group": True, "colors": POSTS["private"]["colors"], "legend": POSTS["private"]["legend"]},
 }
+def city_spec(cfg: Config, key: str) -> dict:
+    """A post's (or format's) titles and fields in this city's words and airports."""
+    import copy
+    spec = copy.deepcopy(FORMAT_SPECS[key] if key in FORMAT_SPECS else POSTS[key])
+    if cfg.city_id == "omaha":
+        return spec
+    private = [i for i in cfg.metro if i not in cfg.military_fields]
+    spec["fields"] = {"private": private, "types": private, "weekend": private, "gameday": private,
+                      "military": cfg.military_fields,
+                      "all": list(cfg.metro), "scoreboard": list(cfg.metro), "hours": list(cfg.metro),
+                      "lincoln": spec["fields"]}.get(key, [cfg.hub])
+    for k, v in list(spec.items()):
+        if k == "kicker":
+            spec[k] = cfg.local(v)
+        elif isinstance(v, tuple) and all(isinstance(x, str) for x in v):
+            spec[k] = tuple(cfg.local(x) for x in v)
+    return spec
+
+
 TOWNS = [("Omaha", -95.9345, 41.2565, "big"), ("Lincoln", -96.7026, 40.8136, "big"),
          ("Council Bluffs", -95.8608, 41.2619, ""), ("Bellevue", -95.9145, 41.1370, ""),
          ("Papillion", -96.0422, 41.1544, "left"), ("Fremont", -96.4981, 41.4333, "left"),
@@ -270,7 +294,14 @@ class Reel:
                  week: list | None = None, fmt: str | None = None):
         self.cfg, self.slot, self.day, self.post, self.f, self.demo = cfg, slot, day, post, fonts, demo
         self.fmt = fmt
-        self.spec = FORMAT_SPECS[fmt] if fmt else POSTS[slot]
+        self.spec = city_spec(cfg, fmt or slot)
+        self.L = cfg.local   # Omaha's words in this city's (Eppley -> KCI ...)
+        omaha = cfg.city_id == "omaha"
+        self.backdrop = ASSETS / cfg.city.get("backdrop", "backdrop.jpg" if omaha else "backdrop_sky.jpg")
+        self.badge = ASSETS / cfg.city.get("badge", "badge.png" if omaha else "badge_plain.png")
+        self.towns = [tuple(t) for t in cfg.city.get("towns", [])] or TOWNS
+        brand = cfg.general.get("brand_name", "SkyBird - Omaha")
+        self.brand_tail = brand[len("SkyBird"):].strip() if brand.startswith("SkyBird") else brand
         if int(cfg.section("media").get("data_day_offset", -1)) != -1:   # not yesterday: name the day
             name = day.strftime("%A")
             self.spec = {k: tuple(t.replace("yesterday", name) for t in v) if isinstance(v, tuple) else v
@@ -279,7 +310,7 @@ class Reel:
         self.week = week or []
         self.handle = cfg.general.get("handle", "@skybirdomaha")
         self.date_label = f"{day.strftime('%a').upper()} · {day.strftime('%b').upper()} {day.day}"
-        if fmt == "wrap":
+        if fmt in ("wrap", "rivalry"):
             self.date_label = self.s.get("range", "").upper()
         if fmt == "weekend":
             self.date_label = f"SAT–SUN · {self.s.get('weekend', '').upper()}"
@@ -288,6 +319,9 @@ class Reel:
         self.hub_icao = self.spec["fields"][0]
         self.hub = tuple(float(v) for v in proj(hub["lon"], hub["lat"]))
         self.near = (self.hub[0] - 8, self.hub[1] - 4, 225.0)
+        if cfg.city.get("map_center"):   # e.g. Kansas City: downtown, with KCI north of the river
+            cx, cy = proj(*cfg.city["map_center"])
+            self.near = (float(cx), float(cy), 225.0)
 
     # -- shared pieces
     def _map_base(self, cv: Canvas):
@@ -299,7 +333,7 @@ class Reel:
         counties = cv.C.LineCollection(m["counties"], colors="#C3D2E2", lw=1.0 * PX, zorder=2.6)
         ax.add_collection(counties)
         towns = []
-        for name, lon, lat, kind in TOWNS:
+        for name, lon, lat, kind in self.towns:
             x, y = proj(lon, lat)
             if kind == "big":
                 t = cv.text(float(x) - 6, float(y), name, 34, "#3A4E66", cv.f.head, ha="right", va="center", z=3, ax=ax)
@@ -324,7 +358,7 @@ class Reel:
         arts += cv.paper_plane(82, 178, 40, fc=WHITE, ec=BIRD, lw=2.4, z=22)
         name_w = cv.width("SkyBird", 34, cv.f.head)
         arts.append(cv.text(134, 207, "SkyBird", 34, NAVY, cv.f.head, z=22))
-        arts.append(cv.text(134 + name_w + 10, 207, "- Omaha", 34, BIRD, cv.f.head, z=22))
+        arts.append(cv.text(134 + name_w + 10, 207, self.brand_tail, 34, BIRD, cv.f.head, z=22))
         arts += cv.spaced(995, 205, self.date_label, 22, NAVY, cv.f.mono6, spacing=3, ha="right", z=22)
         kick = f"{self.spec['kicker']} · {'DEPARTURES' if which == 'dep' else 'ARRIVALS'}" if self.slot != "military" else self.spec["kicker"]
         arts += cv.spaced(82, 250, kick, 21, kick_color, cv.f.mono, spacing=3.2, z=22)
@@ -370,7 +404,8 @@ class Reel:
             txt = cv.text(0, 0, p["code"], 24, WHITE, cv.f.mono, ha="center", va="center", z=32)
             pins.append({"x": x, "y": y, "dot": dot, "ring": ring, "box": box, "txt": txt, "code": p["code"]})
         city_box = cv.rbox(0, 0, 10, 10, 18, NAVY, z=31)[0]
-        city_txt = cv.text(0, 0, "OMAHA", 24, WHITE, cv.f.mono, ha="center", va="center", z=32)
+        city_txt = cv.text(0, 0, self.cfg.city.get("pin", self.cfg.city_name.upper()), 24, WHITE, cv.f.mono,
+                           ha="center", va="center", z=32)
         return {"pins": pins, "city": (city_box, city_txt)}
 
     def _update_pins(self, cv, cam: Camera, pins, t):
@@ -627,15 +662,15 @@ class Reel:
     # ---- stats ----
     def _band(self, cv):
         from PIL import Image
-        img = Image.open(ASSETS / "backdrop.jpg")
+        img = Image.open(self.backdrop)
         iw, ih = img.size
         band_h = 330
         crop_h = int(iw * band_h / W)
         top = int(ih * 0.12)
-        cv.image(ASSETS / "backdrop.jpg", 0, 0, W, band_h, z=3, crop=(0, top, iw, min(ih, top + crop_h)))
+        cv.image(self.backdrop, 0, 0, W, band_h, z=3, crop=(0, top, iw, min(ih, top + crop_h)))
         # badge overlapping the band
         circ = cv.P.Circle((130, 330), 76, transform=cv.ui.transData)
-        im = cv.image(ASSETS / "badge.png", 54, 254, 152, 152, z=6)
+        im = cv.image(self.badge, 54, 254, 152, 152, z=6)
         im.set_clip_path(circ)
         cv.ui.add_patch(cv.P.Circle((130, 330), 76, fc="none", ec=CLOUD, lw=6 * PX, zorder=7))
 
@@ -690,13 +725,13 @@ class Reel:
     def _stats_kicker(self):
         if self.fmt:
             return self.spec["kicker"]
-        return {"commercial": "EPPLEY · OMA", "private": "PRIVATE PLANES · METRO", "military": "OFFUTT · OFF",
-                "all": "ALL AIRPORTS · METRO"}[self.slot]
+        return self.L({"commercial": "EPPLEY · OMA", "private": "PRIVATE PLANES · METRO", "military": "OFFUTT · OFF",
+                       "all": "ALL AIRPORTS · METRO"}[self.slot])
 
     def _stats_content(self):
         s = self.s
         if self.fmt == "wrap":
-            tiles = [(s.get("week_airline", 0), "AIRLINE FLIGHTS · EPPLEY", NAVY), (s.get("week_private", 0), "PRIVATE JETS", ORANGE),
+            tiles = [(s.get("week_airline", 0), self.L("AIRLINE FLIGHTS · EPPLEY"), NAVY), (s.get("week_private", 0), "PRIVATE JETS", ORANGE),
                      (s.get("week_military", 0), "OFFUTT · AT LEAST", NAVY), (s.get("week_total", 0), "ALL FLIGHTS", NAVY)]
             facts = []
             if s.get("busiest_day"):
@@ -713,6 +748,17 @@ class Reel:
                 facts.append(("FARTHEST", f"{s['farthest']['code']} · {s['farthest']['miles']:,} mi"))
             if s.get("top_types"):
                 facts.append(("TOP TYPE", f"{s['top_types'][0]['name']} · {s['top_types'][0]['count']}"))
+            return tiles, s.get("top_origins", [])[:5], facts
+        if self.fmt == "gameday":
+            pct = s.get("change_pct")
+            tiles = [(s.get("jets", 0), "PRIVATE JETS IN", ORANGE), (s.get("small", 0), "SMALL PLANES IN", NAVY),
+                     (s["normal"] if s.get("normal") is not None else "–", "JETS, A WEEK BEFORE", NAVY),
+                     (f"{'+' if (pct or 0) >= 0 else ''}{pct}%" if pct is not None else "–", "JETS VS A WEEK BEFORE", ORANGE)]
+            facts = []
+            if s.get("farthest"):
+                facts.append(("FARTHEST", f"{s['farthest']['code']} · {s['farthest']['miles']:,} mi"))
+            if s.get("top_types"):
+                facts.append(("TOP JET", f"{s['top_types'][0]['name']} · {s['top_types'][0]['count']}"))
             return tiles, s.get("top_origins", [])[:5], facts
         if self.fmt == "lincoln":
             pct = s.get("change_pct")
@@ -766,7 +812,7 @@ class Reel:
     def _city_rows(self, cv, rows, t):
         if not rows:
             return
-        label = {"lincoln": "WHERE THEY FLEW IN FROM", "weekend": "WHERE THEY FLEW IN FROM", "wrap": "TOP CITIES · EPPLEY, ALL WEEK"}.get(self.fmt, "TOP CITIES")
+        label = {"lincoln": "WHERE THEY FLEW IN FROM", "weekend": "WHERE THEY FLEW IN FROM", "gameday": "WHERE THE JETS CAME FROM", "wrap": self.L("TOP CITIES · EPPLEY, ALL WEEK")}.get(self.fmt, "TOP CITIES")
         cv.spaced(62, 1010, label, 16, MUTED, cv.f.mono6, spacing=2.4, z=12)
         mx = max(r["count"] for r in rows)
         for i, r in enumerate(rows):
@@ -830,7 +876,7 @@ class Reel:
     # ---- end card ----
     def end_scene(self, write, secs: float = 3.5):
         from PIL import Image
-        img = Image.open(ASSETS / "backdrop.jpg")
+        img = Image.open(self.backdrop)
         iw, ih = img.size
         band = int(H * 0.46)
         for fi in range(int(secs * FPS)):
@@ -843,7 +889,7 @@ class Reel:
             ch = cw * band / W
             cx, cy = iw / 2 + iw * 0.05, ih * 0.5
             crop = (int(cx - cw / 2), int(max(0, cy - ch / 2)), int(cx + cw / 2), int(min(ih, cy + ch / 2)))
-            cv.image(ASSETS / "backdrop.jpg", 0, 0, W, band, z=3, crop=crop)
+            cv.image(self.backdrop, 0, 0, W, band, z=3, crop=crop)
             s = pop((t - 0.15) / 0.45)
             r = 150 * max(0.01, s)
             cv.ui.add_patch(cv.P.Circle((W / 2, band), r + 10, fc=CLOUD, ec="none", zorder=20))
@@ -855,17 +901,17 @@ class Reel:
                 cv.ui.plot([W / 2 - 52 + 50 * 104 / 120, W / 2 - 52 + 116 * 104 / 120],
                            [band - 104 + 48 * 104 / 120, band - 104 + 4 * 104 / 120], color=NAVY, lw=3 * PX, zorder=24, alpha=a)
                 cv.text(W / 2, band + 44, "SkyBird", 62, WHITE, cv.f.head, ha="center", z=23, alpha=a)
-                cv.spaced(W / 2, band + 88, "OMAHA", 20, MINT, cv.f.mono, spacing=6, ha="center", z=23, alpha=a)
+                cv.spaced(W / 2, band + 88, self.cfg.city_name.upper(), 20, MINT, cv.f.mono, spacing=6, ha="center", z=23, alpha=a)
             g = pop((t - 0.5) / 0.45)
             if g > 0:
                 a = min(1, g)
                 cv.text(W / 2, 1150, "Every bird flying", 84, NAVY, cv.f.head, ha="center", z=12, alpha=a)
                 w_in = cv.width("in ", 84, cv.f.head)
-                w_om = cv.width("Omaha.", 84, cv.f.head)
+                w_om = cv.width(self.L("Omaha."), 84, cv.f.head)
                 x0 = W / 2 - (w_in + w_om) / 2
                 cv.text(x0, 1245, "in ", 84, NAVY, cv.f.head, z=12, alpha=a)
-                cv.text(x0 + w_in, 1245, "Omaha.", 84, BIRD, cv.f.head, z=12, alpha=a)
-                cv.text(W / 2, 1320, "SkyBird - Omaha · new board every morning.", 30, INK, cv.f.body, ha="center", z=12, alpha=a)
+                cv.text(x0 + w_in, 1245, self.L("Omaha."), 84, BIRD, cv.f.head, z=12, alpha=a)
+                cv.text(W / 2, 1320, self.L("SkyBird - Omaha · new board every morning."), 30, INK, cv.f.body, ha="center", z=12, alpha=a)
             p = pop((t - 0.8) / 0.45)
             if p > 0:
                 a = min(1, p)
@@ -907,7 +953,7 @@ class Reel:
         reveal = 4.3
         for fi in range(int(secs * FPS)):
             t = fi / FPS
-            cv = self._board(t, "GUESS FIRST", "Where did Eppley", "fly most?")
+            cv = self._board(t, "GUESS FIRST", self.L("Where did Eppley"), "fly most?")
             for i, city in enumerate(choices):
                 y = 700 + i * 200
                 s = pop((t - 0.2 - i * 0.15) / 0.4)
@@ -975,7 +1021,7 @@ class Reel:
         busiest = max(range(len(days)), key=lambda i: vals[i] or 0) if days else -1
         for fi in range(int(secs * FPS)):
             t = fi / FPS
-            cv = self._board(t, "THE WEEK", "Omaha's week", "in the sky.")
+            cv = self._board(t, "THE WEEK", self.L("Omaha's week"), "in the sky.")
             base, top = 1330, 760
             for i, d in enumerate(days):
                 x = 62 + i * 138
@@ -1011,7 +1057,7 @@ class Reel:
             if s > 0:
                 a = min(1, s)
                 cv.rbox(62, 680, 956, 430, 34, NAVY, z=10, alpha=a)
-                cv.spaced(110, 760, f"OMA TO {f['code']}", 26, MINT, cv.f.mono, spacing=3, z=12, alpha=a)
+                cv.spaced(110, 760, self.L("OMA") + f" TO {f['code']}", 26, MINT, cv.f.mono, spacing=3, z=12, alpha=a)
                 cv.text(106, 870, f["city"], 92 if len(f["city"]) < 14 else 64, WHITE, cv.f.head, z=12, alpha=a)
                 mi = int(round(f["miles"] * ease((t - 0.5) / 2.0)))
                 cv.text(106, 1010, f"{mi:,} mi", 110, ORANGE, cv.f.head, z=12, alpha=a)
@@ -1034,7 +1080,7 @@ class Reel:
         a, b = d.get("first") or {}, d.get("last") or {}
         for fi in range(int(secs * FPS)):
             t = fi / FPS
-            cv = self._board(t, "EPPLEY", "First up,", "last down.")
+            cv = self._board(t, self.L("EPPLEY"), "First up,", "last down.")
             for i, (row, kick, word, fc, tc, kc) in enumerate(((a, "FIRST UP", "to", WHITE, NAVY, BIRD),
                                                                 (b, "LAST DOWN", "from", NAVY, WHITE, MINT))):
                 y = 690 + i * 360
@@ -1058,7 +1104,7 @@ class Reel:
         peak = max(range(len(rows)), key=lambda i: rows[i]["count"]) if rows else -1
         for fi in range(int(secs * FPS)):
             t = fi / FPS
-            cv = self._board(t, "BUSIEST HOURS", "Omaha's busiest", "hours.")
+            cv = self._board(t, "BUSIEST HOURS", self.L("Omaha's busiest"), "hours.")
             base, top, step = 1300, 720, 956 / max(len(rows), 1)
             for i, r in enumerate(rows):
                 x = 62 + i * step
@@ -1083,7 +1129,7 @@ class Reel:
         mx = max([r["count"] for r in rows] or [1]) or 1
         for fi in range(int(secs * FPS)):
             t = fi / FPS
-            cv = self._board(t, "PRIVATE JETS", "Which jets fly", "Omaha?")
+            cv = self._board(t, "PRIVATE JETS", "Which jets fly", self.L("Omaha?"))
             for i, r in enumerate(rows):
                 y = 690 + i * 132
                 g = ease((t - 0.3 - i * 0.15) / 0.8)
@@ -1097,6 +1143,44 @@ class Reel:
                 al = min(1, (t - 2.6) / 0.4)
                 cv.text(62, 1450, f"Most common: {rows[0]['name']}.", 52, NAVY, cv.f.head, z=12, alpha=al)
                 cv.text(62, 1510, "Takeoffs and landings, by aircraft type.", 28, MUTED, cv.f.body, z=12, alpha=al)
+            self._finish(cv, t, write)
+
+    def rivalry_scene(self, write, secs: float = 9.0):
+        """Omaha vs. Kansas City: the week's private-jet totals side by side, then day by day."""
+        s = self.s
+        sides = s.get("sides") or []
+        top = max([x["total"] for x in sides] or [1]) or 1
+        colors = [BIRD, ORANGE]
+        days = max((len(x["days"]) for x in sides), default=0)
+        mx = max([d["jets"] or 0 for x in sides for d in x["days"]] + [1])
+        for fi in range(int(secs * FPS)):
+            t = fi / FPS
+            cv = self._board(t, "THE RIVALRY", "Omaha vs.", "Kansas City.")
+            for i, side in enumerate(sides):
+                x = 62 + i * 486
+                g = pop((t - 0.2 - i * 0.15) / 0.4)
+                if g <= 0:
+                    continue
+                win = t >= 3.2 and side["city"] == s.get("winner")
+                cv.rbox(x, 680, 470, 260, 30, NAVY if win else WHITE, z=10, alpha=min(1, g), shadow=not win)
+                cv.spaced(x + 30, 740, side["city"].upper(), 24, MINT if win else colors[i], cv.f.mono, spacing=3, z=12)
+                n = int(round(side["total"] * ease((t - 0.6) / 2.2)))
+                cv.text(x + 26, 860, f"{n:,}", 110, ORANGE if win else NAVY, cv.f.head, z=12)
+                cv.text(x + 30, 912, "private jets, takeoffs + landings", 22, WHITE if win else MUTED, cv.f.body, z=12)
+            base, height, step = 1330, 280, 956 / max(days, 1)
+            for j in range(days):
+                for i, side in enumerate(sides):
+                    d = side["days"][j]
+                    g = ease((t - 2.4 - j * 0.08) / 0.8)
+                    h = height * ((d["jets"] or 0) / mx) * g
+                    bx = 62 + j * step + 10 + i * (step - 20) / 2
+                    if h > 2:
+                        cv.rbox(bx, base - h, (step - 20) / 2 - 4, h, 8, colors[i], z=10)
+                cv.text(62 + j * step + step / 2, base + 36, sides[0]["days"][j]["label"], 20, MUTED, cv.f.mono6, ha="center", z=12)
+            if t >= 3.4:
+                a = min(1, (t - 3.4) / 0.4)
+                line = f"{s['winner']} wins the week." if s.get("winner") else "A tie this week."
+                cv.text(62, 1480, line, 52, NAVY, cv.f.head, z=12, alpha=a)
             self._finish(cv, t, write)
 
     # ---- whole reel ----
@@ -1117,7 +1201,9 @@ class Reel:
         elif self.fmt == "wrap":
             self.week_scene(w.send)
             self.stats_scene(w.send)
-        elif self.fmt in ("lincoln", "weekend"):
+        elif self.fmt == "rivalry":
+            self.rivalry_scene(w.send)
+        elif self.fmt in ("lincoln", "weekend", "gameday"):
             self.map_scene("arr", w.send, first_scene=True, secs=9.0)
             self.stats_scene(w.send, secs=7.0)
         elif self.fmt in ("farthest", "firstlast", "hours", "types"):
@@ -1211,12 +1297,12 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         fl.fix_airline_fields(cfg, raw)
         after_fix = fl.eppley_arrivals(cfg, raw)
         lists = fl._lists(cfg)
-        deps = sum(1 for f in raw if f.get("estDepartureAirport") == fl.HUB != f.get("estArrivalAirport")
+        deps = sum(1 for f in raw if f.get("estDepartureAirport") == cfg.hub != f.get("estArrivalAirport")
                    and fl.classify(f, *lists) == "commercial")
         if deps and after_fix >= 0.95 * deps:
             # OpenSky's own arrival list is already complete (normal now that the posts show
             # two days back): skip the fill-in, which would cost ~120 requests for nothing.
-            log(cfg, f"Eppley arrivals look complete ({after_fix} vs {deps} departures); no fill-in needed")
+            log(cfg, f"{cfg.hub_name} arrivals look complete ({after_fix} vs {deps} departures); no fill-in needed")
         else:
             raw += fl.infer_arrivals(cfg, raw, flight_day, session)
         breakdown = {"from_opensky": from_opensky, "moved_from_council_bluffs": after_fix - from_opensky,
@@ -1235,6 +1321,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     from . import VERSION
     log(cfg, f"Video style: SkyBird board (renderer {VERSION})")
     stats = {"data_date": flight_day.isoformat(), "source": "sample" if demo else "opensky", "renderer": VERSION,
+             "hub": {k: day["posts"]["commercial"]["stats"][k] for k in ("departures", "arrivals")},
              "complete": day["complete"], "incomplete_reason": day["why"],
              "posts": {k: v["stats"] for k, v in day["posts"].items()}}
     if demo:  # sample data: make up the earlier days too so the preview shows full bars
@@ -1268,6 +1355,10 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
                 post["stats"] = dict(post["stats"], **extra)
             elif fmt == "weekend":
                 post = formats.weekend(cfg, flight_day, day)
+            elif fmt == "gameday":
+                post = formats.gameday(cfg, flight_day, day)
+            elif fmt == "rivalry":
+                post = formats.rivalry(cfg, flight_day)
             elif fmt == "scoreboard":
                 post = dict(day["posts"]["all"])
                 post["stats"] = dict(post["stats"], scoreboard=formats.scoreboard(cfg, flight_day, post["stats"]))
@@ -1294,7 +1385,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     fonts = Fonts()
     # Made in this order: All planes first (the full picture), then Eppley, private, military.
-    order = ["all", "commercial", "private", "military", "wrap"]
+    order = ["all", "commercial", "private", "military", "wrap", "rivalry"]
     for slot in [k for k in order if k in wanted and (k in fposts or k in day["posts"])]:
         post, fmt = fposts.get(slot) or day["posts"][slot], fmts.get(slot)
         shown = date.fromisoformat(post["stats"]["game_day"]) if fmt == "lincoln" else flight_day

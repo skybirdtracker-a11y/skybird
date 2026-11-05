@@ -100,12 +100,12 @@ def _eppley_counts(cfg: Config, day) -> str:
     import json
     try:
         st = json.loads(cfg.media_file(day, cfg.section("media").get("stats_file", "stats.json")).read_text(encoding="utf-8"))
-        c = st["posts"]["commercial"]
+        c = st.get("hub") or st["posts"]["commercial"]   # (the 9 AM post may be a new format)
         out = f"{c.get('departures', '?')} airline departures, {c.get('arrivals', '?')} arrivals ({st.get('data_date', '')})"
         b = st.get("eppley_arrivals") or {}
         if b:
             out += (f". Arrivals: {b.get('from_opensky', 0)} from OpenSky + {b.get('moved_from_council_bluffs', 0)} "
-                    f"moved from fields next to Eppley + {b.get('filled_in', 0)} filled in")
+                    f"moved from fields next to {cfg.hub_name} + {b.get('filled_in', 0)} filled in")
         if st.get("opensky_requests"):
             out += f". OpenSky requests this run: {st['opensky_requests']}"
         return out
@@ -182,7 +182,7 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     if todo and not cfg.dry_run:
         from .publishers import github_host, pages_host
         try:
-            links = pages_host.publish(todo, today)
+            links = pages_host.publish(todo, today, city=cfg.city_id if cfg.city else None)
             log(cfg, f"Videos live on GitHub Pages ({len(links)}): {next(iter(links.values()))}")
             try:   # the old release copies (Buffer can't play those links) are no longer needed
                 github_host.cleanup(now.date() + timedelta(days=github_host.KEEP_DAYS + 1))
@@ -258,9 +258,9 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     body = ("Scheduled in Buffer:\n" + "\n".join(scheduled) if scheduled else "Nothing could be scheduled.")
     eppley = _eppley_counts(cfg, today)
     if eppley:
-        body += f"\n\nEppley: {eppley}"
+        body += f"\n\n{cfg.hub_name}: {eppley}"
         if os.environ.get("GITHUB_ACTIONS"):   # shows on the run's page (Annotations)
-            print(f"::notice title=Eppley flights::{eppley}")
+            print(f"::notice title={cfg.hub_name} flights::{eppley}")
     vs_board = compare_with_board(cfg, cfg.data_date(today))
     if vs_board:
         body += f"\n\n{vs_board}"
@@ -273,6 +273,8 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     if problems:
         body += "\n\nProblems:\n" + "\n".join(p[:300] for p in problems[:6])
     body += "\n\nReview them in the Buffer app (Queue): edit or delete anything you don't want before it posts."
+    if cfg.city.get("comment_policy"):
+        body += "\n\nComments: " + cfg.city["comment_policy"]
     n = len(scheduled)
     title = "SkyBird (cloud): " + (f"{n} post{'s' if n != 1 else ''} scheduled" if scheduled else
                                    "already scheduled earlier" if in_buffer else "nothing scheduled")
@@ -445,10 +447,17 @@ def _board_time(txt: str, now: datetime):
     return datetime(d.year, d.month, d.day, h, int(mm), tzinfo=now.tzinfo)
 
 
+def board_on(cfg: Config) -> bool:
+    """Only Omaha has an airport arrivals board SkyBird reads (flyoma.com)."""
+    return bool(cfg.city.get("board_check")) if cfg.city else True
+
+
 def snapshot_board(cfg: Config, now: datetime | None = None, session=None) -> int:
     """Read Eppley's arrivals board and keep each flight (latest status) under its flight
     day (3:30 AM to 3:29 AM). Several readings a day build the whole day's list."""
     import json
+    if not board_on(cfg):
+        return 0
     now = now or engine.now_local(cfg)
     rows = read_board(session)["arrivals"]
     folder = cfg.data_dir / "board"
@@ -476,13 +485,15 @@ def compare_with_board(cfg: Config, flight_day: date) -> str:
     using the saved board readings and the day's master flight list."""
     import json
     import re
+    if not board_on(cfg):
+        return ""
     bpath = cfg.data_dir / "board" / f"{flight_day.isoformat()}.json"
     fpath = cfg.data_dir / "flights" / f"{flight_day.isoformat()}.json"
     if not bpath.exists() or not fpath.exists():
         return ""
     board = list(json.loads(bpath.read_text(encoding="utf-8")).values())
     flights = json.loads(fpath.read_text(encoding="utf-8"))["flights"]
-    ours = {(f.get("callsign") or "").strip().upper() for f in flights if f.get("estArrivalAirport") == "KOMA"}
+    ours = {(f.get("callsign") or "").strip().upper() for f in flights if f.get("estArrivalAirport") == cfg.hub}
     ours_nums = {}
     for cs in ours:
         m = re.match(r"([A-Z]{3})(\d+)", cs)
@@ -538,7 +549,7 @@ def check_opensky(cfg: Config) -> list[str]:
     else:
         day = date.fromisoformat(files[-1].stem)
         raw = json.loads(files[-1].read_text(encoding="utf-8"))["flights"]
-        dep = next((f for f in raw if f.get("estDepartureAirport") == "KOMA" and f.get("icao24")
+        dep = next((f for f in raw if f.get("estDepartureAirport") == cfg.hub and f.get("icao24")
                     and (f.get("callsign") or "").startswith(("SWA", "UAL", "AAL", "DAL"))), None)
         if not dep:
             out.append(f"no airline departure in the {day} list")

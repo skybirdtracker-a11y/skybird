@@ -33,6 +33,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="skybird", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", help="path to config.toml")
+    ap.add_argument("--city", help="which city to run (cities/<city>.toml); default: omaha")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("serve"); p.add_argument("--no-scheduler", action="store_true")
     p.add_argument("--wait", type=float, default=0, help="seconds to wait first (used by Restart)")
@@ -72,7 +73,7 @@ def main(argv=None):
     if a.cmd == "cloud-run" and a.fresh_data:
         import os
         os.environ["SKYBIRD_FRESH_DATA"] = "1"
-    cfg = load_config(a.config)
+    cfg = load_config(a.config, a.city)
     if sys.stdout is None or sys.stderr is None:  # started via pythonw (no console window)
         out = open(cfg.data_dir / "server.log", "a", encoding="utf-8", buffering=1)
         sys.stdout = sys.stdout or out

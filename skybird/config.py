@@ -27,6 +27,7 @@ class Slot:
     platforms: list[str]
     days: list[str] = field(default_factory=list)   # e.g. ["sun"]; empty = every day
     occasional: bool = False   # only posts on dates you pick under [posts_on]
+    enabled: bool = True       # false = defined but switched off (e.g. the rivalry post until KC launches)
 
 
 @dataclass
@@ -35,6 +36,64 @@ class Config:
     raw: dict
     secrets_path: Path
     secrets: dict = field(default_factory=dict)
+    city: dict = field(default_factory=dict)   # the city profile (cities/<id>.toml); {} = single-city setup
+    path: Path | None = None                    # the settings file (to load another city's settings)
+
+    # ---- city ------------------------------------------------------------
+    @property
+    def city_id(self) -> str:
+        return self.city.get("id", "omaha")
+
+    @property
+    def city_name(self) -> str:
+        return self.city.get("name", "Omaha")
+
+    @property
+    def airports(self) -> dict[str, list]:
+        """ICAO -> [short name, role] for the city's fields (Omaha's when there's no profile)."""
+        return self.city.get("airports") or OMAHA_AIRPORTS
+
+    @property
+    def metro(self) -> dict[str, str]:
+        return {icao: v[0] for icao, v in self.airports.items()}
+
+    @property
+    def hub(self) -> str:
+        return self.city.get("hub", "KOMA")
+
+    @property
+    def hub_name(self) -> str:
+        return self.city.get("hub_name", self.metro.get(self.hub, "Eppley"))
+
+    @property
+    def military_fields(self) -> list[str]:
+        return [icao for icao, v in self.airports.items() if v[1] == "military"]
+
+    @property
+    def small_fields(self) -> list[str]:
+        """Fields where airline jets don't land (OpenSky sometimes files hub landings there)."""
+        return [icao for icao, v in self.airports.items() if v[1] in ("ga", "business")]
+
+    @property
+    def excluded(self) -> list[str]:
+        return list(self.city.get("exclude", []))
+
+    def local(self, text: str) -> str:
+        """Omaha's wording in another city's words (Eppley -> KCI, OMA -> MCI, Omaha ->
+        Kansas City). Omaha's text comes back unchanged."""
+        if self.city_id == "omaha" or not text:
+            return text
+        import re
+        from .flights import place
+        hub = place(self.hub) or {}
+        words = {"#SkyBirdOmaha": self.city.get("hashtag", "#SkyBird"), "SkyBird - Omaha": self.city.get("brand", "SkyBird"),
+                 "@skybirdomaha": self.city.get("handle", ""), "#EppleyAirfield": f"#{self.hub_name}",
+                 "#OmahaAirport": f"#{self.city_name.replace(' ', '')}Airport", "#OMA": f"#{hub.get('code', '')}",
+                 "#Omaha": f"#{self.city_name.replace(' ', '')}", "Eppley": self.hub_name,
+                 "OMA": hub.get("code", self.hub[1:]), "Omaha": self.city_name,
+                 "EPPLEY": self.hub_name.upper(), "OMAHA": self.city_name.upper()}
+        pat = re.compile("|".join(re.escape(k) + (r"\b" if k[-1].isalnum() else "") for k in words))
+        return pat.sub(lambda m: words[m.group(0)], text)
 
     # ---- general ---------------------------------------------------------
     @property
@@ -49,6 +108,8 @@ class Config:
     def dry_run(self) -> bool:
         if os.environ.get("SKYBIRD_DRY_RUN") in ("1", "true", "yes"):
             return True
+        if self.city.get("dry_run"):   # a city in its quiet build never posts, whatever the settings say
+            return True
         from .settings import load_settings
         override = load_settings(self.data_dir).get("dry_run")
         if override is not None:
@@ -61,8 +122,16 @@ class Config:
         return bool(load_settings(self.data_dir).get("autopost", True))
 
     @property
-    def data_dir(self) -> Path:
+    def shared_dir(self) -> Path:
+        """Data every city shares (the aircraft-type cache, the OpenSky ledger)."""
         p = self.root / self.general.get("data_dir", "data")
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def data_dir(self) -> Path:
+        """This city's own data: data/<city>/ (the whole data folder without a city profile)."""
+        p = self.shared_dir / self.city_id if self.city else self.shared_dir
         p.mkdir(parents=True, exist_ok=True)
         return p
 
@@ -121,13 +190,14 @@ class Config:
                 platforms=[p for p in s.get("platforms", PLATFORMS) if p in PLATFORMS],
                 days=[str(d).lower()[:3] for d in s.get("days", [])],
                 occasional=bool(s.get("occasional", False)),
+                enabled=bool(s.get("enabled", True)),
             ))
         return out
 
     def slot_active(self, key: str, day: date) -> bool:
         """Does this post go out on `day`? (The Sunday wrap only runs on Sundays.)"""
         sl = next((s for s in self.slots if s.key == key), None)
-        if not sl:
+        if not sl or not sl.enabled:
             return False
         if sl.days:
             return day.strftime("%a").lower() in sl.days
@@ -141,6 +211,8 @@ class Config:
         raise KeyError(f"Unknown slot '{key}'. Known: {[s.key for s in self.slots]}")
 
     def platform_enabled(self, platform: str) -> bool:
+        if self.city and platform not in self.city.get("platforms", PLATFORMS):
+            return False   # the city doesn't post there
         return bool(self.section(platform).get("enabled", True))
 
     def data_date(self, post_date: date) -> date:
@@ -164,6 +236,8 @@ class Config:
         folder = template.format(post_date=post_date.isoformat(),
                                  data_date=self.data_date(post_date).isoformat())
         p = Path(folder)
+        if self.city:   # videos/<city>/... so cities never share files
+            p = p / self.city_id if "{" not in template else p.parent / self.city_id / p.name
         return p if p.is_absolute() else self.root / p
 
     def upload_post_opts(self) -> dict:
@@ -181,11 +255,61 @@ class Config:
         tmp.replace(self.secrets_path)
 
 
-def load_config(path: str | os.PathLike | None = None) -> Config:
+OMAHA_AIRPORTS = {"KOMA": ["Eppley", "hub"], "KMLE": ["Millard", "ga"], "KCBF": ["Council Bluffs", "ga"],
+                  "KOFF": ["Offutt", "military"]}
+
+
+def cities_dir(root: Path) -> Path | None:
+    for p in (root / "cities", root.parent / "cities"):
+        if p.is_dir():
+            return p
+    return None
+
+
+def city_ids(root: Path) -> list[str]:
+    d = cities_dir(root)
+    return sorted(p.stem for p in d.glob("*.toml")) if d else []
+
+
+def load_config(path: str | os.PathLike | None = None, city: str | None = None) -> Config:
+    """Settings, plus the city profile (cities/<city>.toml; Omaha by default) when the
+    project has a cities/ folder. A profile's [config.<section>] replaces that section."""
     path = Path(path or os.environ.get("SKYBIRD_CONFIG", "config.toml")).resolve()
     if not path.exists():
         raise SystemExit(f"Config not found: {path}\nCopy config.example.toml to config.toml first.")
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     secrets_path = path.parent / "secrets.json"
     secrets = json.loads(secrets_path.read_text()) if secrets_path.exists() else {}
-    return Config(root=path.parent, raw=raw, secrets_path=secrets_path, secrets=secrets)
+    profile = {}
+    cdir = cities_dir(path.parent)
+    city = city or os.environ.get("SKYBIRD_CITY") or ("omaha" if cdir else None)
+    if city:
+        f = (cdir or path.parent / "cities") / f"{city}.toml"
+        if not f.exists():
+            raise SystemExit(f"Unknown city '{city}': no {f}. Cities: {', '.join(city_ids(path.parent)) or 'none'}")
+        profile = tomllib.loads(f.read_text(encoding="utf-8"))
+        profile.setdefault("id", city)
+        for section, value in (profile.get("config") or {}).items():
+            raw[section] = value
+        g = raw.setdefault("general", {})
+        for key, name in (("brand", "brand_name"), ("handle", "handle"), ("timezone", "timezone"),
+                          ("flight_day_start", "flight_day_start")):
+            if key in profile:
+                g[name] = profile[key]
+    cfg = Config(root=path.parent, raw=raw, secrets_path=secrets_path, secrets=secrets, city=profile, path=path)
+    if profile:
+        _move_legacy_data(cfg, city_ids(path.parent))
+    return cfg
+
+
+def _move_legacy_data(cfg: Config, cities: list[str]) -> None:
+    """One time: Omaha's data used to sit directly in the data folder; it moves into
+    data/omaha/. The shared aircraft-type cache and the OpenSky ledger stay where they are."""
+    base, own = cfg.shared_dir, cfg.shared_dir / cfg.city_id
+    if cfg.city_id != "omaha" or own.exists():
+        return
+    keep = {"aircraft_cache.json", "opensky_ledger.json", *cities}
+    items = [p for p in base.iterdir() if p.name not in keep]
+    own.mkdir(parents=True, exist_ok=True)
+    for p in items:
+        p.rename(own / p.name)

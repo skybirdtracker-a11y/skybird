@@ -290,7 +290,7 @@ def fix_airline_fields(cfg: Config, raw: list[dict]) -> int:
                 f["moved_to_eppley"] = True
                 n += 1
     if n:
-        log(cfg, f"Moved {n} airline flight ends from Council Bluffs/Millard to Eppley")
+        log(cfg, f"Moved {n} airline flight ends from small fields next to {cfg.hub_name} to {cfg.hub_name}")
     return n
 
 
@@ -387,7 +387,7 @@ def learn_near_fields(cfg: Config, codes: list[str]) -> None:
         if c and c not in cfg.metro and c not in cfg.excluded:
             d[c] = d.get(c, 0) + 1
     path.write_text(json.dumps(d, indent=1), encoding="utf-8")
-    log(cfg, "Small fields OpenSky files Eppley landings under: " + ", ".join(f"{c} ({n})" for c, n in
+    log(cfg, f"Small fields OpenSky files {cfg.hub_name} landings under: " + ", ".join(f"{c} ({n})" for c, n in
                                                                               sorted(d.items(), key=lambda kv: -kv[1])[:8]))
 
 

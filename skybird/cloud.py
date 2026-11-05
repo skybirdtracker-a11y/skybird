@@ -296,13 +296,14 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
             if os.environ.get("GITHUB_ACTIONS"):
                 print(f"::warning title=Video storage::{storage_note[:900]}")
     sample_link = ""
-    if todo and cfg.dry_run and cfg.city.get("sample_days") and os.environ.get("GITHUB_ACTIONS"):
+    sample = [Path(p["video"]) for k, p in st["posts"].items() if p.get("video_exists")]   # all of the day's videos
+    if sample and cfg.dry_run and cfg.city.get("sample_days") and os.environ.get("GITHUB_ACTIONS"):
         # quiet build: the videos and the sample page on GitHub Pages (one push), nothing posts
         from .publishers import pages_host
         try:
             base = pages_host.base_url()
             page = report.sample_page(cfg, now, base)
-            pages_host.publish(todo, today, city=cfg.city_id, wait=0, keep_days=int(cfg.city["sample_days"]),
+            pages_host.publish(sample, today, city=cfg.city_id, wait=0, keep_days=int(cfg.city["sample_days"]),
                                pages={f"reports/{cfg.city_id}/sample.html": page})
             sample_link = f"{base}/reports/{cfg.city_id}/sample.html"
         except Exception as e:

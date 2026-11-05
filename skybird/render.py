@@ -1411,7 +1411,8 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         lg = ledger(cfg)
         stats["opensky_requests"] += (f"; today so far {lg.used():,} of {int(lg.caps['per_city']):,} for {cfg.city_name}, "
                                       f"{lg.total():,} of {int(lg.caps['total']):,} for all cities"
-                                      + (f", OpenSky says {lg.day()['remaining']:,} left" if lg.day().get("remaining") is not None else ""))
+                                      + (f", OpenSky says {lg.day()['remaining']:,} credits left" if lg.day().get("remaining") is not None else "")
+                                      + (f" ({lg.credits():,} credits used by {cfg.city_name} today)" if lg.credits() else ""))
     cfg.media_file(post_date, "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     fonts = Fonts()
     # Made in this order: All planes first (the full picture), then Eppley, private, military.

@@ -40,6 +40,26 @@ In the repository: **Settings → Secrets and variables → Actions → New repo
 
 These stay encrypted in GitHub. They are never shown again, not even to you.
 
+**Buffer channels: each city's own, by ID.** Each city posts only to the channel IDs in
+`[buffer_channels]` in its profile (`cities/<city>.toml`). They're not secret. A city never falls back
+to another city's channel, and SkyBird never picks "the TikTok channel" by kind, because the
+account has two TikToks. A platform without an ID is not posted to.
+
+| City | Channel | ID |
+|---|---|---|
+| Omaha | Facebook (SkyBird Omaha) | `6abc75edea19ca0bde2ccf21` |
+| Omaha | TikTok (skybirdomaha) | `6abc7609ea19ca0bde2ccfc7` |
+| Kansas City | TikTok (skybirdkansascity) | `6aebeae4e29c69a171682de3` |
+
+To list the account's channels and IDs: Actions → **SkyBird post check** → Run workflow →
+tick **Only look up the Buffer channels** → Run.
+
+A `BUFFER_CHANNEL_<CITY>_<PLATFORM>` secret, for example `BUFFER_CHANNEL_KC_TIKTOK`, replaces the
+profile's ID for that channel. SkyBird refuses:
+- an ID given to two cities or two platforms,
+- an ID that isn't on the Buffer account,
+- an ID for the wrong kind of channel.
+
 ## 4. Test it (nothing gets posted)
 
 1. Click the **Actions** tab. If GitHub asks, click **I understand my workflows, go ahead and enable them**.
@@ -68,7 +88,22 @@ A red ✕? Click it, then the failed step; the last lines say what's wrong (usua
 ## Good to know
 
 - **The repository must be public.** Buffer doesn't keep its own copy of a scheduled video; it fetches the link again at post time. SkyBird stores each day's videos on this repository (Releases → `videos-YYYY-MM-DD`, removed after 14 days) so the link never expires, and GitHub only lets Buffer fetch them from a public repository. Your keys stay private (secrets are never shown). Settings → General → Danger Zone → Change visibility → Public.
-- **Post check:** about 30 minutes after each post time a small job ("SkyBird post check") asks Buffer whether it went out, and your phone gets an alert if not.
+- **Hourly check ("SkyBird post check"):** runs every hour from about 6 AM to 8 PM.
+  - **Just in time:** each post goes into Buffer about 2½ hours before its time, so only a few
+    posts wait in Buffer at once (the free plan allows 10; `max_scheduled` in `[buffer]`).
+    The morning notification lists the posts that are ready; you hear again only if one can't
+    be scheduled. Review a post in Buffer's Queue once it's there. To put the whole day in at
+    once again, set `just_in_time = false`.
+  - **Did it go out:** from about 15 minutes after each post time, it asks Buffer whether the
+    post went out, and your phone gets an alert if not.
+- **Buffer budget:** at most 60 Buffer calls a day, all cities together (`[buffer]` in
+  `cloud/config.toml`).
+  - The last 20 are kept for scheduling posts.
+  - When Buffer says less than 20% of a rate window is left, only scheduling goes ahead until
+    that window resets.
+  - The numbers (views and likes) are read once a day in a single batched call, plus one
+    channel-totals call per channel. A normal day uses about 20 calls.
+  - The weekly report shows the daily use.
 
 - GitHub's clock can run 5–30 minutes late at busy times. Posts are scheduled in Buffer, so they still go out on time; if the job itself runs after a post's time, that post goes out about 10 minutes later instead, with the rest an hour apart (same catch-up rule as the PC).
 - In the cloud, every post uses the day's default caption style (it rotates, so the caption tests keep running) and the pre-checked @tags. There's no approval step: Buffer's queue is your approval.
@@ -136,7 +171,10 @@ Any field with fewer than 5 takeoffs and landings is shown only as "Other fields
 **To add a city:**
 1. Copy `cities/kc.toml` and change the values. Check every ICAO code in `airportsdata`.
 2. Add `events/<city>.toml`.
-3. Add the city to the `matrix: city:` list in the three workflows in `.github/workflows/`.
+3. Add the city to the `matrix: city:` list in the three workflows in `.github/workflows/`, and
+   its `BUFFER_CHANNEL_<CITY>_<PLATFORM>` lines to the `env:` of the step that runs SkyBird in each.
+   Put its Buffer channel IDs under `[buffer_channels]` in its profile once they're connected.
+   The free plan has 3 channels.
 4. Start it with `dry_run = true` and check a couple of weeks of sample videos before it posts.
 
 Run one city by hand with `python -m skybird --config cloud/config.toml --city kc cloud-run --dry-run`.

@@ -27,6 +27,9 @@ towns = [
   ["Liberty", -94.4191, 39.2461, ""],
 ]
 
+[buffer_channels]   # Kansas City's own Buffer channels; a BUFFER_CHANNEL_KC_<PLATFORM> secret replaces one
+tiktok = "6aebeae4e29c69a171682de3"     # skybirdkansascity
+
 [airports]   # ICAO = [short name, role]
 KMCI = ["KCI", "hub"]
 KMKC = ["Downtown", "business"]

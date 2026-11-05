@@ -308,7 +308,8 @@ def _move_legacy_data(cfg: Config, cities: list[str]) -> None:
     base, own = cfg.shared_dir, cfg.shared_dir / cfg.city_id
     if cfg.city_id != "omaha" or own.exists():
         return
-    keep = {"aircraft_cache.json", "opensky_ledger.json", *cities}
+    keep = {"aircraft_cache.json", "opensky_ledger.json", "buffer_channels.json", "buffer_ledger.json",
+            "buffer_queue.json", "buffer_shape.json", *cities}
     items = [p for p in base.iterdir() if p.name not in keep]
     own.mkdir(parents=True, exist_ok=True)
     for p in items:

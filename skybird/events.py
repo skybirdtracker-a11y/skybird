@@ -41,18 +41,25 @@ def _d(v) -> date:
 
 
 def events_for(cfg: Config, day: date, slot_key: str | None = None) -> list[dict]:
-    """Events active on `day` (including lead-up days), highest priority first.
+    """Events active on post date `day` (including lead-up days), highest priority first.
     Each returned dict gets `phase` = "lead_up" or "during" and the matching
-    `caption_hook`."""
+    `caption_hook`.
+
+    An event with match = "flight_day" uses its real dates: its hook goes on the posts that
+    SHOW those days' flights (with the 2-day lag, a Sunday game is on Tuesday's posts), and
+    its lead-up teaser on the posts from lead_days before the event through its first day."""
     active = []
     for ev in load_events(cfg):
         slots = ev.get("slots", ["all_posts"])
         if slot_key and "all_posts" not in slots and slot_key not in slots:
             continue
         lead = int(ev.get("lead_days", 0))
-        if ev["start"] <= day <= ev["end"]:
+        flights = ev.get("match") == "flight_day"
+        shown = cfg.data_date(day) if flights else day
+        if ev["start"] <= shown <= ev["end"]:
             phase, hook = "during", ev.get("hook", "")
-        elif ev["start"] - timedelta(days=lead) <= day < ev["start"]:
+        elif ev["start"] - timedelta(days=lead) <= day < ev["start"] + timedelta(days=1 if flights else 0) \
+                and shown < ev["start"] and (lead or not flights):
             phase, hook = "lead_up", ev.get("lead_hook", ev.get("hook", ""))
         else:
             continue

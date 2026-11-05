@@ -26,6 +26,7 @@ class Slot:
     file: str
     platforms: list[str]
     days: list[str] = field(default_factory=list)   # e.g. ["sun"]; empty = every day
+    occasional: bool = False   # only posts on dates you pick under [posts_on]
 
 
 @dataclass
@@ -119,6 +120,7 @@ class Config:
                 file=s.get("file", f"{key}.mp4"),
                 platforms=[p for p in s.get("platforms", PLATFORMS) if p in PLATFORMS],
                 days=[str(d).lower()[:3] for d in s.get("days", [])],
+                occasional=bool(s.get("occasional", False)),
             ))
         return out
 

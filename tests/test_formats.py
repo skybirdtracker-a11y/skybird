@@ -22,8 +22,10 @@ def cfg(tmp_path):
 
 
 def test_volume_test_balanced_levels_and_half_new(cfg):
+    """The 1-4 posts-a-day test (ran Oct 28 - Nov 4): the logic, as if it ran 4 weeks."""
     from collections import Counter
     from datetime import timedelta
+    cfg.raw["testing"].pop("volume_until")
     levels, seen = Counter(), Counter()
     for i in range(28):
         d = date(2026, 10, 28) + timedelta(days=i)
@@ -44,16 +46,25 @@ def test_volume_test_balanced_levels_and_half_new(cfg):
     assert all(seen[f] >= 2 for f in ("guess", "farthest", "firstlast", "scoreboard", "hours", "types"))
 
 
-def test_without_volume_test_all_four_post_with_two_concepts(cfg):
+def test_three_posts_a_day_with_rotating_concepts(cfg):
+    from collections import Counter
     from datetime import timedelta
-    cfg.raw["testing"]["volume"] = False
-    cfg.raw.pop("posts_on", None)
-    for i in range(14):
-        d = date(2026, 10, 28) + timedelta(days=i)
+    seen, regular = Counter(), Counter()
+    for i in range(28):
+        d = date(2026, 11, 5) + timedelta(days=i)
         sc = formats.day_schedule(cfg, d)
-        assert sc["level"] == 4 and len(sc["formats"]) == 2
+        fixed = (cfg.section("formats").get(d.isoformat()) or {})
+        assert sc["running"] == ["commercial", "private", "all"] and sc["level"] == 3
+        assert len(sc["formats"]) in (1, 2) or fixed                         # per_day 1.5: 1 and 2 alternate
+        assert not cfg.slot_active("military", d)
+        seen.update(sc["formats"].values())
+        regular.update(k for k in sc["running"] if k not in sc["formats"])
+    assert all(regular[k] >= 5 for k in ("commercial", "private", "all"))    # each slot stays regular some days
+    assert all(seen[f] >= 3 for f in ("guess", "farthest", "firstlast", "scoreboard", "hours", "types"))
+    # the days before Nov 5 still come out the way they ran
+    assert formats.day_schedule(cfg, date(2026, 11, 3))["running"] == ["military", "all"]
     cfg.raw["testing"]["enabled"] = False
-    assert formats.day_plan(cfg, date(2026, 10, 29)) == {}
+    assert formats.day_plan(cfg, date(2026, 11, 6)) == {}
     assert formats.format_for(cfg, date(2026, 11, 1), "wrap") == "wrap"
     assert cfg.slot_active("wrap", date(2026, 11, 1)) and not cfg.slot_active("wrap", date(2026, 11, 2))
 
@@ -243,6 +254,7 @@ def test_report_compares_posts_per_day(cfg):
     from datetime import timedelta
     from skybird import report
     from skybird.state import save_state
+    cfg.raw["testing"].pop("volume_until")      # as if the volume test ran all 4 weeks
     start = date(2026, 10, 28)
     for i in range(27):
         d = start + timedelta(days=i)
@@ -257,6 +269,7 @@ def test_report_compares_posts_per_day(cfg):
         save_state(cfg, d, {"posts": posts})
     md = report.build(cfg, datetime(2026, 11, 24, 8, 20, tzinfo=cfg.tz))["markdown"]
     assert "## Posts per day (last 4 weeks)" in md
+    assert "Instagram: paused" in md                           # Omaha's Instagram is off
     assert "| 2 | 7 |" in md and "| 4 | 7 |" in md and "| 1 | 6 |" in md   # 27 days: one 1-post day still to come
     assert "Most total views so far: **4 posts a day**" in md
     assert "| Wed |" in md
@@ -302,3 +315,42 @@ def test_report_skips_deleted_posts_and_reads_newest_first(cfg, monkeypatch):
     asked.clear()
     report.collect(cfg, "K", now)
     assert not any(p.startswith("old") for p in asked)                    # not asked again
+
+
+def _fake_day(cfg, monkeypatch):
+    """A cloud run with made-up stats and video files: no OpenSky, no Buffer, no network."""
+    from skybird import cloud, notify
+    from skybird.settings import save_settings
+    day = fl.build_day(cfg, fl.demo_raw(date(2026, 11, 4), cfg))
+
+    def fake_render(cfg_, post_date, **kw):
+        posts = {k: v["stats"] for k, v in day["posts"].items()}
+        _stats_file(cfg_, post_date, posts)
+        for s in cfg_.slots:
+            cfg_.media_file(post_date, s.file).write_bytes(b"x")
+        return True
+    monkeypatch.setattr(engine, "run_render", fake_render)
+    monkeypatch.setattr(cloud, "snapshot_board", lambda *a, **k: 0)
+    monkeypatch.setattr(cloud, "compare_with_board", lambda *a, **k: "")
+    sent = []
+    monkeypatch.setattr(notify, "send", lambda *a, **k: sent.append(a))
+    for k in ("OPENSKY_CLIENT_ID", "OPENSKY_CLIENT_SECRET", "BUFFER_API_KEY"):
+        monkeypatch.setenv(k, "x")
+    save_settings(cfg.data_dir, {"dry_run": True})
+    return cloud
+
+
+def test_omaha_day_three_posts_no_instagram_no_offutt(cfg, monkeypatch):
+    cloud = _fake_day(cfg, monkeypatch)
+    now = datetime(2026, 11, 6, 3, 40, tzinfo=cfg.tz)       # Friday: 3 posts
+    out = cloud.run(cfg, now=now)
+    from skybird.state import load_state
+    st = load_state(cfg, now.date())
+    assert set(st["posts"]) == {"commercial", "private", "all"}             # no Offutt post
+    for k, post in st["posts"].items():
+        assert not post["platforms"]["instagram"]
+        assert set(post["results"]) == {"facebook", "tiktok"}               # nothing for Instagram
+    assert len(out["scheduled"]) == 3 and not any("instagram" in s for s in out["scheduled"])
+    # Offutt can still go out on a date you pick
+    cfg.raw.setdefault("posts_on", {})["2026-11-11"] = ["commercial", "private", "military", "all"]
+    assert cfg.slot_active("military", date(2026, 11, 11)) and not cfg.slot_active("military", date(2026, 11, 12))

@@ -74,25 +74,26 @@ A red ✕? Click it, then the failed step; the last lines say what's wrong (usua
 - In the cloud, every post uses the day's default caption style (it rotates, so the caption tests keep running) and the pre-checked @tags. There's no approval step: Buffer's queue is your approval.
 - Engagement charts, best-time testing and phone approvals live in the PC dashboard, which keeps working whenever the PC is on (with Auto-posting off it just shows things).
 
-## New post concepts (the test)
+## Daily posts and new concepts
 
-Every day about half of the posts that go out are new concepts (`[testing]` in
-`cloud/config.toml`). Which post sits out rotates daily, and each post takes the concept
-that has run least so far. Military always stays regular (counts only).
+Omaha posts **3 a day** to Facebook and TikTok: 9 AM Eppley, 11 AM private planes and 6 PM
+all airports, plus the **Sunday wrap** at 10 AM. Instagram is paused (`[instagram] enabled =
+false` in `cloud/config.toml`; set it to true to bring it back). The 1 PM Offutt post is
+**occasional**: it only goes out on dates listed under `[posts_on]`, for example
+`"2026-11-11" = ["commercial", "private", "military", "all"]`.
+
+Each day `per_day` of the 3 posts (`[testing]`, 1.5 = 1 and 2 on alternate days) are swapped
+for new concepts. Which post stays regular rotates daily, and each post takes the concept that
+has run least so far, scaled by `[testing.weights]` (2 = about twice as often, 0 = paused).
 
 | Post | Concepts it rotates through |
 |---|---|
 | 9 AM Eppley | #01 Guess the destination, #02 Farthest flight, #03 First up, last down |
-| 11 AM Private jets | #30 Which jets fly Omaha, #14 Weekend arrivals (Tuesdays) |
+| 11 AM Private planes | #30 Which jets fly Omaha, #14 Weekend arrivals (Tuesdays) |
 | 6 PM All airports | #10 Metro scoreboard, #06 Busiest hours |
 | extra 10 AM Sunday | #07 Sunday weekly wrap (`[slots.wrap]`) |
 
-**Posting volume:** with `volume = true` each day posts 1, 2, 3 or all 4 of the regular posts
-(about half of them new concepts). The level rotates so every weekday gets each level once
-every 4 weeks, and which posts run rotates too. The weekly report's "Posts per day" tables
-compare total views per day for each level, overall and by weekday.
-
 Fixed dates under `[formats]` win over the rotation (the Lincoln game-weekend post on the
-Sunday after a Husker home game). Set `enabled = false` under `[testing]` to stop the test.
-If a concept can't be made on its day, the regular post goes out instead and the run shows a
-"New format" warning. The weekly report compares each concept with the regular posts.
+Sunday after a Husker home game). If a concept can't be made on its day, the regular post goes
+out instead and the run shows a "New format" warning. The weekly report compares each concept
+with the regular posts. (Oct 28 – Nov 4 tested 1 to 4 posts a day; that test is over.)

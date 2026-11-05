@@ -71,6 +71,9 @@ title = "Offutt · Military"
 time = "13:00"
 file = "post3_military.mp4"
 platforms = ["instagram", "facebook", "tiktok"]
+# Occasional since Nov 5, 2026 (weakest format): it only posts on dates listed under
+# [posts_on], e.g. "2026-11-11" = ["commercial", "private", "military", "all"].
+occasional = true
 
 [slots.all]
 title = "All airports + planes"
@@ -86,11 +89,12 @@ file = "post5_wrap.mp4"
 platforms = ["instagram", "facebook", "tiktok"]
 days = ["sun"]
 
-# ---- New concepts + posting volume (the test) -------------------------------
-# Every day some of the regular posts are swapped for new concepts. Which post sits out
-# rotates daily, and each post takes the concept that has run least so far, so every
-# concept gets a fair number of tries. Military always stays regular (counts only).
-# Turn the test off with enabled = false. Concepts per post:
+# ---- New concepts (the test) ------------------------------------------------
+# 3 posts a day (9 AM, 11 AM, 6 PM) plus the Sunday wrap; Offutt is occasional. Each
+# day `per_day` of the 3 are swapped for new concepts. Which post stays regular rotates
+# daily, and each post takes the concept that has run least so far (scaled by the
+# weights below), so every concept gets its turns. Turn the test off with
+# enabled = false. Concepts per post:
 #   commercial (9 AM): guess (#01), farthest (#02), firstlast (#03)
 #   private (11 AM):   types (#30), weekend (#14, Tuesdays only)
 #   all (6 PM):        scoreboard (#10), hours (#06)
@@ -98,12 +102,12 @@ days = ["sun"]
 [testing]
 enabled = true
 start = "2026-10-28"
-per_day = 2
-# Posting-volume test: each day posts 1, 2, 3 or all 4 of the regular posts (about half
-# of them new concepts). The level rotates so every weekday gets each level once every
-# 4 weeks, and which posts run rotates too. The weekly report compares total views per
-# day for each level. false = always post all 4 (with per_day concepts).
+# New concepts per day among the 3 daily posts: 1.5 = 1 and 2 on alternate days.
+per_day = 1.5
+# The 1-4 posts-a-day test ran Oct 28 – Nov 4 and is over (3 posts a day since Nov 5).
+# Kept so those days are still worked out the way they ran.
 volume = true
+volume_until = "2026-11-05"
 
 # How often each concept runs compared with the others in its slot: 2 = about twice as
 # often, 0.5 = half as often, 0 = paused. Adjusted every few days from the analytics.
@@ -116,7 +120,7 @@ weekend = 1
 scoreboard = 1
 hours = 1
 
-# Fixed dates win over the rotation (and count toward the 2 a day).
+# Fixed dates win over the rotation (and count toward the day's concepts).
 # lincoln = private jets into Lincoln for a Husker home game; post it the Sunday after.
 [formats]
 "2026-11-01" = { commercial = "lincoln" }

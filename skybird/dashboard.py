@@ -78,7 +78,8 @@ def create_app(cfg: Config) -> Flask:
         pending = sum(1 for p in (st or {}).get("posts", {}).values() if p["status"] == PENDING)
         return render_template(template, tab=tab, cfg=cfg, brand=cfg.general.get("brand_name", "SkyBird - Omaha"),
                                dry_run=cfg.dry_run, autopost=cfg.autopost, pending_count=pending,
-                               platforms=PLATFORMS, label=PLATFORM_LABEL, fmt_time=_fmt_time,
+                               platforms=[p for p in PLATFORMS if cfg.platform_enabled(p)],   # paused ones hidden
+                               label=PLATFORM_LABEL, fmt_time=_fmt_time,
                                backend=engine.backend(cfg), caption_for=engine.caption_for, tiktok_tags=engine.tiktok_tags,
                                rendering=engine.rendering_flag(cfg).exists(),
                                opensky_on=bool(cfg.secrets.get("opensky_client_id")),

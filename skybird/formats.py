@@ -65,11 +65,12 @@ def day_plan(cfg: Config, post_date: date) -> dict[str, str]:
 def day_schedule(cfg: Config, post_date: date) -> dict:
     """The day's plan: {"level": posts that day, "running": [slots that post], "formats": {slot: concept}}.
 
-    Volume test ([testing] volume = true): each day posts 1, 2, 3 or 4 of the regular
-    slots. The level follows a 4-week rotation, so every weekday gets each level once in
-    4 weeks, and which slots run rotates too (so no time of day is favored). About half
-    of the posts that run are new concepts (1 → 0 or 1, 2 → 1, 3 → 1 or 2, 4 → 2).
-    Otherwise all 4 post and `per_day` of them are concepts.
+    Every day the daily posts go out (slots not marked `occasional`; Offutt is occasional
+    since Nov 5, 2026) and `per_day` of them are new concepts (1.5 = 1 and 2 on alternate
+    days). The concept slots rotate, so a different post stays regular each day.
+    Volume test (Oct 28 – Nov 4, 2026; [testing] volume_until): each day posted 1, 2, 3 or
+    4 of the 4 slots on a 4-week rotation, about half of them concepts; kept so those
+    days are still worked out the way they really ran.
     Fixed dates under [formats] always run and count as concepts; [posts_on] picks which
     posts go out on a date instead of the rotation. Each slot takes the
     concept that has run least so far (worked out day by day from the test's start)."""
@@ -82,6 +83,12 @@ def day_schedule(cfg: Config, post_date: date) -> dict:
     weights = {k: float(v) for k, v in (t.get("weights") or {}).items()}
     on = bool(start) and t.get("enabled", True)
     volume = on and t.get("volume", False)
+    try:
+        volume_until = date.fromisoformat(str(t.get("volume_until", "")))
+    except ValueError:
+        volume_until = None
+    daily = [s.key for s in cfg.slots if s.key in ALL_SLOTS and not s.occasional]
+    per_day = float(t.get("per_day", 2))
     used: Counter = Counter()
 
     def plan_for(d: date) -> dict:
@@ -89,12 +96,15 @@ def day_schedule(cfg: Config, post_date: date) -> dict:
         if not on or d < start:
             return {"level": len(ALL_SLOTS), "running": list(ALL_SLOTS), "formats": fixed}
         k = (d - start).days
-        if volume:
+        if volume and (volume_until is None or d < volume_until):
+            base = ALL_SLOTS
             level = (d.weekday() + k // 7) % 4 + 1
             new = level // 2 + (level % 2 if k % 2 else 0)
         else:
-            level, new = len(ALL_SLOTS), int(t.get("per_day", 2))
-        order = [ALL_SLOTS[(k + i) % len(ALL_SLOTS)] for i in range(len(ALL_SLOTS))]
+            base = daily
+            level = len(daily)
+            new = int(per_day) + (1 if per_day % 1 and k % 2 else 0)
+        order = [base[(k + i) % len(base)] for i in range(len(base))]
         running = list(fixed) + [x for x in order if x not in fixed]
         running = running[:max(level, len(fixed))]
         swap = [x for x in (cfg.section("posts_on").get(d.isoformat()) or []) if x in ALL_SLOTS]

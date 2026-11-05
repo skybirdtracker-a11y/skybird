@@ -103,6 +103,9 @@ def test_quiet_build_publishes_videos_and_sample_page(project, monkeypatch):
     assert "quiet-build sample" in page and "Day 1 of 14" in page and "2026-11-06" in page
     assert "<a href='https://skybirdtracker-a11y.github.io/skybird/videos/kc/2026-11-06/" in page
     assert "9:15 AM" in page and "6:15 PM" in page and "traffic check" in page
+    got.clear()                                                            # a late run still shows all 3
+    cloud.run(k, now=datetime(2026, 11, 7, 21, 0, tzinfo=k.tz))
+    assert len(got["files"]) == 3
 
 
 def test_pages_keep_a_week_of_kc_but_three_days_of_omaha(tmp_path, monkeypatch):

@@ -129,11 +129,23 @@ class Ledger:
 
     # ---- what OpenSky says ---------------------------------------------------------
     def note_headers(self, headers) -> None:
+        """OpenSky's own count of what's left. OpenSky's daily allowance is in credits, and
+        one request can cost several, so each drop in the count is also added to this
+        city's `credits` for the day (the real use, next to the request count)."""
         rem = (headers or {}).get("X-Rate-Limit-Remaining")
         if rem is not None and str(rem).strip().lstrip("-").isdigit():
             self.load()
-            self.day()["remaining"] = int(rem)
+            d = self.day()
+            rem, before = int(rem), d.get("remaining")
+            if before is not None and 0 < before - rem:
+                cr = d.setdefault("credits", {})
+                cr[self.city] = cr.get(self.city, 0) + before - rem
+            d["remaining"] = rem
             self.save()
+
+    def credits(self, city: str | None = None) -> int | None:
+        """Credits this city used today, as measured from OpenSky's count (None: not measured yet)."""
+        return (self.day().get("credits") or {}).get(city or self.city)
 
     def note_429(self, retry_after: str | None) -> None:
         self.load()

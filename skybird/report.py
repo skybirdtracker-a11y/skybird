@@ -272,16 +272,18 @@ def opensky_table(cfg: Config) -> list[str]:
     if not days:
         return []
     lines = ["## OpenSky use (last 7 days)", "",
-             f"| Day | {cfg.city_name} | Lists | Fill-in | Types | Backfill | All cities | OpenSky left |",
-             "|---|---:|---:|---:|---:|---:|---:|---:|"]
+             f"| Day | {cfg.city_name} requests | Lists | Fill-in | Types | Backfill | {cfg.city_name} credits | All cities | OpenSky credits left |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for d in days:
         mine = d.get("cities", {}).get(cfg.city_id, {})
+        cr = (d.get("credits") or {}).get(cfg.city_id)
         lines.append(f"| {d['day']} | {sum(mine.values()):,} | " + " | ".join(str(mine.get(c, 0)) for c in CATEGORIES)
-                     + f" | {d.get('total', 0):,} | {d['remaining'] if d.get('remaining') is not None else '–'}"
+                     + f" | {f'{cr:,}' if cr else '–'} | {d.get('total', 0):,} | {d['remaining'] if d.get('remaining') is not None else '–'}"
                      + (" (429)" if d.get("blocked") else "") + " |")
     caps = lg.caps
     lines += ["", f"Limits per day: {int(caps['per_city']):,} per city, {int(caps['total']):,} for all cities "
-              f"(the account allows 4,000). Alerts at {caps['alert_pct']}%.", ""]
+              f"(the account allows 4,000). Alerts at {caps['alert_pct']}%. Credits: OpenSky's own count, measured "
+              "from its remaining-credits header; one request can cost several credits.", ""]
     return lines
 
 

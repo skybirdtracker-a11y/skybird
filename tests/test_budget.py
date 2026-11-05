@@ -189,3 +189,17 @@ def test_kc_simulated_day_stays_under_its_caps(project, monkeypatch):
     assert mine["lists"] <= 40 and mine["fill_in"] > 0 and mine["types"] > 0
     assert "kc" in lg.day()["lists_done"]
     assert not any("KSZL" in u or "KOFF" in u for u in asked)          # never asks for Whiteman or Offutt
+
+
+def test_credits_are_measured_from_opensky_count(project, monkeypatch):
+    """OpenSky's allowance is in credits; a request can cost several. The drops in its
+    remaining count are kept per city next to the request count."""
+    monkeypatch.setattr("skybird.notify.send", lambda *a, **k: None)
+    om, kc = ledger(project), ledger(project, "kc")
+    om.note_headers({"X-Rate-Limit-Remaining": "4000"})
+    om.note_headers({"X-Rate-Limit-Remaining": "3970"})                 # Omaha: 30 credits
+    kc.note_headers({"X-Rate-Limit-Remaining": "3900"})                 # KC: 70 credits
+    kc.note_headers({"X-Rate-Limit-Remaining": "3880"})
+    assert om.credits() == 30 and kc.credits() == 90 and kc.day()["remaining"] == 3880
+    kc.note_headers({"X-Rate-Limit-Remaining": "3999"})                 # OpenSky reset: not a use
+    assert kc.credits() == 90

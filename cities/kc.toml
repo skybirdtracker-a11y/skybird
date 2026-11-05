@@ -14,7 +14,7 @@ pin = "KC"               # the city's tag on the map
 dry_run = true
 # Quiet build: 14 days in dry run. Each morning the videos and a sample page go on GitHub
 # Pages (reports/kc/sample.html, videos kept sample_days days); nothing posts.
-quiet_build_start = "2026-11-06"
+quiet_build_start = "2026-11-05"
 quiet_build_days = 14
 sample_days = 7
 # Launch: set launch_date (the first post day) and dry_run = false (its TikTok channel is

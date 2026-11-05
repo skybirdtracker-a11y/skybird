@@ -32,6 +32,9 @@ def project(tmp_path, monkeypatch):
     monkeypatch.setattr(notify, "send", lambda *a, **k: None)
     monkeypatch.setattr(buffer, "LEDGER", None)
     buffer._SHAPE.clear()
+    for c in ("omaha", "kc"):   # start without IDs in the profiles; each test sets what it needs
+        f = tmp_path / "cities" / f"{c}.toml"
+        f.write_text(__import__("re").sub(r"\[buffer_channels\][^\[]*", "", f.read_text()))
     data = tmp_path / "cloud" / "data"
     data.mkdir()
     (data / "buffer_channels.json").write_text(json.dumps(
@@ -85,16 +88,34 @@ def test_wrong_kind_or_unknown_channel_is_not_used(project, monkeypatch):
     assert use == {} and any("tiktok channel" in n for n in notes) and any("isn't on" in n for n in notes)
 
 
-def test_omaha_lookup_by_kind_until_its_secrets_exist_never_takes_kcs(project, monkeypatch):
-    monkeypatch.setenv("BUFFER_CHANNEL_KC_TIKTOK", "c" * 24)
-    chans = [CHANNELS[2], CHANNELS[0], CHANNELS[1]]                       # KC's TikTok listed first
+def test_the_real_profiles_never_give_omaha_the_kc_tiktok():
+    """The account lists Kansas City's TikTok first: Omaha must still get its own."""
+    from skybird.config import load_config as lc
+    import os
+    for k in [k for k in os.environ if k.startswith("BUFFER_CHANNEL_")]:
+        del os.environ[k]
+    om, kcc = lc(ROOT / "cloud" / "config.toml"), lc(ROOT / "cloud" / "config.toml", "kc")
+    ids = cloud.channel_secrets(om)
+    assert ids["omaha"] == {"facebook": "6abc75edea19ca0bde2ccf21", "tiktok": "6abc7609ea19ca0bde2ccfc7"}
+    assert ids["kc"] == {"tiktok": "6aebeae4e29c69a171682de3"}
+    assert kcc.city_id == "kc"
+
+
+def test_ids_from_the_profile_and_never_by_kind(project, monkeypatch):
+    chans = [{"id": "c" * 24, "name": "skybirdkansascity", "service": "tiktok"}] + CHANNELS[:2]
     (project / "cloud" / "data" / "buffer_channels.json").write_text(json.dumps(
         {"fetched_at": datetime.now().astimezone().isoformat(), "org_id": "o" * 24, "channels": chans}))
     use, notes = cloud.connect_buffer(cfg_for(project))
+    assert use == {}                                                      # no IDs: nothing, not "the first TikTok"
+    f = project / "cities" / "omaha.toml"
+    f.write_text(f.read_text().replace("\n[airports]", '\n[buffer_channels]\nfacebook = "' + "a" * 24 +
+                                       '"\ntiktok = "' + "b" * 24 + '"\n\n[airports]', 1))
+    use, _ = cloud.connect_buffer(cfg_for(project))
     assert use == {"facebook": "a" * 24, "tiktok": "b" * 24}
-    assert any("BUFFER_CHANNEL_OMAHA" in n for n in notes)
-    kc_profile = project / "cities" / "kc.toml"                            # KC has no such fallback
-    assert "buffer_lookup_fallback" not in kc_profile.read_text()
+    monkeypatch.setenv("BUFFER_CHANNEL_OMAHA_TIKTOK", "c" * 24)          # a secret replaces the profile's ID...
+    monkeypatch.setenv("BUFFER_CHANNEL_KC_TIKTOK", "c" * 24)             # ...but one shared with KC is refused
+    use, notes = cloud.connect_buffer(cfg_for(project))
+    assert use == {"facebook": "a" * 24} and any("refused" in n for n in notes)
 
 
 def test_channels_are_looked_up_once_and_kept(project, monkeypatch):

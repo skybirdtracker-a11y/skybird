@@ -47,12 +47,19 @@ CHANNEL_CACHE_DAYS = 7
 
 
 def channel_secrets(cfg: Config) -> dict[str, dict[str, str]]:
-    """{city: {platform: Buffer channel ID}} from the BUFFER_CHANNEL_<CITY>_<PLATFORM> secrets, every city."""
-    from .config import city_ids
+    """{city: {platform: Buffer channel ID}} for every city: [buffer_channels] in its profile
+    (cities/<city>.toml), each replaced by a BUFFER_CHANNEL_<CITY>_<PLATFORM> secret if set."""
+    import tomllib
+    from .config import cities_dir, city_ids
     out = {}
     for c in city_ids(cfg.root) or [cfg.city_id]:
+        try:
+            prof = tomllib.loads((cities_dir(cfg.root) / f"{c}.toml").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            prof = {}
         for plat in PLATFORMS:
-            v = os.environ.get(CHANNEL_SECRET.format(city=c.upper(), platform=plat.upper()), "").strip()
+            v = os.environ.get(CHANNEL_SECRET.format(city=c.upper(), platform=plat.upper()), "").strip() \
+                or str((prof.get("buffer_channels") or {}).get(plat) or "").strip()
             if v:
                 out.setdefault(c, {})[plat] = v
     return out
@@ -94,7 +101,8 @@ def channel_list(cfg: Config, want: tuple[str, ...] = (), force: bool = False) -
 
 def connect_buffer(cfg: Config, force: bool = False) -> tuple[dict, list[str]]:
     """This city's Buffer channels: ({platform: channel ID}, notes). Only this city's own
-    BUFFER_CHANNEL_<CITY>_<PLATFORM> secrets are used; a channel that is missing, isn't on
+    IDs ([buffer_channels] in its profile, or BUFFER_CHANNEL_<CITY>_<PLATFORM> secrets) are
+    used, never a channel picked by kind; a channel that is missing, isn't on
     the Buffer account, is the wrong kind, or is also given to another city (or another
     platform) is NOT posted to. There is never a fallback to another city's channel."""
     from .publishers import buffer
@@ -111,7 +119,6 @@ def connect_buffer(cfg: Config, force: bool = False) -> tuple[dict, list[str]]:
                          "Each city and platform needs its own channel.")
         else:
             use[plat] = cid
-    legacy = not every.get(cfg.city_id) and bool(cfg.city.get("buffer_lookup_fallback"))
     try:
         listed = channel_list(cfg, tuple(use.values()), force=force)
     except buffer.PublishError as e:
@@ -126,18 +133,10 @@ def connect_buffer(cfg: Config, force: bool = False) -> tuple[dict, list[str]]:
             elif buffer.service_of(by_id[cid]) != plat:
                 notes.append(f"{plat}: channel {cid} is a {by_id[cid].get('service')} channel; not posting there")
                 use.pop(plat)
-        if legacy:   # Omaha only, until its own secrets are added: the account's channels by kind
-            taken = set(others)
-            for plat, ch in buffer.match_channels([c for c in listed if c["id"] not in taken]).items():
-                if cfg.platform_enabled(plat):
-                    use[plat] = ch["id"]
-            if use:
-                notes.append("using the Buffer account's channels by kind: add the BUFFER_CHANNEL_"
-                             f"{cfg.city_id.upper()}_<PLATFORM> secrets to make them explicit")
     for plat in PLATFORMS:
         if cfg.platform_enabled(plat) and plat not in use and not any(n.startswith(plat) for n in notes):
-            notes.append(f"{plat}: no {CHANNEL_SECRET.format(city=cfg.city_id.upper(), platform=plat.upper())} "
-                         "secret; not posting there")
+            notes.append(f"{plat}: no channel ID ([buffer_channels] in cities/{cfg.city_id}.toml or the "
+                         f"{CHANNEL_SECRET.format(city=cfg.city_id.upper(), platform=plat.upper())} secret); not posting there")
     for plat, cid in use.items():
         cfg.secrets[f"buffer_channel_{plat}"] = cid
     return use, notes

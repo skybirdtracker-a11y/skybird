@@ -40,24 +40,25 @@ In the repository: **Settings → Secrets and variables → Actions → New repo
 
 These stay encrypted in GitHub. They are never shown again, not even to you.
 
-**Buffer channels, one secret per city and platform.** SkyBird posts only to the channels
-named here; a city never falls back to another city's channel, and a missing secret means
-"don't post there".
+**Buffer channels: each city's own, by ID.** Each city posts only to the channel IDs in
+`[buffer_channels]` in its profile (`cities/<city>.toml`). They're not secret. A city never falls back
+to another city's channel, and SkyBird never picks "the TikTok channel" by kind, because the
+account has two TikToks. A platform without an ID is not posted to.
 
-| Name | Channel |
-|---|---|
-| `BUFFER_CHANNEL_OMAHA_FACEBOOK` | Omaha's Facebook page in Buffer |
-| `BUFFER_CHANNEL_OMAHA_TIKTOK` | Omaha's TikTok in Buffer |
-| `BUFFER_CHANNEL_KC_TIKTOK` | Kansas City's TikTok in Buffer (once it's connected) |
-| `BUFFER_CHANNEL_KC_FACEBOOK`, `_OMAHA_INSTAGRAM`, `_KC_INSTAGRAM` | Only if those are turned on later |
+| City | Channel | ID |
+|---|---|---|
+| Omaha | Facebook (SkyBird Omaha) | `6abc75edea19ca0bde2ccf21` |
+| Omaha | TikTok (skybirdomaha) | `6abc7609ea19ca0bde2ccfc7` |
+| Kansas City | TikTok (skybirdkansascity) | `6aebeae4e29c69a171682de3` |
 
-To find the IDs: Actions → **SkyBird post check** → Run workflow → tick **Only look up the
-Buffer channels** → Run. The run's page lists each channel with its ID. SkyBird refuses a
-channel ID that is given to two cities or two platforms, an ID that isn't on the Buffer
-account, and an ID for the wrong kind of channel (for example a TikTok ID in a Facebook secret).
-Until Omaha's two secrets are added, Omaha keeps using the account's Facebook and TikTok
-channels by kind, never one given to another city. After adding them, delete the
-`buffer_lookup_fallback` line from `cities/omaha.toml`.
+To list the account's channels and IDs: Actions → **SkyBird post check** → Run workflow →
+tick **Only look up the Buffer channels** → Run.
+
+A `BUFFER_CHANNEL_<CITY>_<PLATFORM>` secret, for example `BUFFER_CHANNEL_KC_TIKTOK`, replaces the
+profile's ID for that channel. SkyBird refuses:
+- an ID given to two cities or two platforms,
+- an ID that isn't on the Buffer account,
+- an ID for the wrong kind of channel.
 
 ## 4. Test it (nothing gets posted)
 
@@ -172,7 +173,8 @@ Any field with fewer than 5 takeoffs and landings is shown only as "Other fields
 2. Add `events/<city>.toml`.
 3. Add the city to the `matrix: city:` list in the three workflows in `.github/workflows/`, and
    its `BUFFER_CHANNEL_<CITY>_<PLATFORM>` lines to the `env:` of the step that runs SkyBird in each.
-   Add those secrets when its accounts are connected in Buffer (the free plan has 3 channels).
+   Put its Buffer channel IDs under `[buffer_channels]` in its profile once they're connected.
+   The free plan has 3 channels.
 4. Start it with `dry_run = true` and check a couple of weeks of sample videos before it posts.
 
 Run one city by hand with `python -m skybird --config cloud/config.toml --city kc cloud-run --dry-run`.

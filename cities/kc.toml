@@ -1,0 +1,130 @@
+# SkyBird city profile: Kansas City. Runs in dry run (quiet build) until the owner says
+# launch: nothing posts while dry_run = true.
+id = "kc"
+name = "Kansas City"
+brand = "SkyBird Kansas City"
+handle = "@skybirdkc"
+hashtag = "#SkyBirdKC"
+timezone = "America/Chicago"
+flight_day_start = "03:30"
+platforms = ["tiktok"]   # + "facebook" once Buffer is upgraded (needs its channel secret too)
+hub = "KMCI"
+hub_name = "KCI"
+pin = "KC"               # the city's tag on the map
+dry_run = true
+# Quiet build: 14 days in dry run. Each morning the videos and a sample page go on GitHub
+# Pages (reports/kc/sample.html, videos kept sample_days days); nothing posts.
+quiet_build_start = "2026-11-06"
+quiet_build_days = 14
+sample_days = 7
+# Launch: set launch_date (the first post day) and dry_run = false (its TikTok channel is
+# already under [buffer_channels]). 3 posts a day, 15 minutes after Omaha's (see [config.slots]).
+# The weekly report then runs the day-30 review ([review] below).
+launch_date = ""
+# Map: centered on downtown, with KCI north of the river
+map_center = [-94.58, 39.16]
+comment_policy = "MKC is a known celebrity-jet airport: hide replies that try to identify a specific jet or person."
+exclude = ["KSZL"]   # Whiteman AFB: never counted, never shown
+towns = [
+  ["Kansas City", -94.5786, 39.0997, "big"],
+  ["KCK", -94.6275, 39.1141, "left"],
+  ["North KC", -94.5733, 39.1300, ""],
+  ["Independence", -94.4155, 39.0911, ""],
+  ["Overland Park", -94.6708, 38.9822, "left"],
+  ["Olathe", -94.8191, 38.8814, "left"],
+  ["Lee's Summit", -94.3822, 38.9108, ""],
+  ["Liberty", -94.4191, 39.2461, ""],
+]
+
+[buffer_channels]   # Kansas City's own Buffer channels; a BUFFER_CHANNEL_KC_<PLATFORM> secret replaces one
+tiktok = "6aebeae4e29c69a171682de3"     # skybirdkansascity
+
+[airports]   # ICAO = [short name, role]
+KMCI = ["KCI", "hub"]
+KMKC = ["Downtown", "business"]
+KOJC = ["Johnson County Exec", "business"]
+# Phase 2, only if the OpenSky budget allows: KIXD New Century, KLXT Lee's Summit
+
+# ---- KC's own settings (replace the shared ones in cloud/config.toml) ----------
+[config.slots.commercial]
+title = "KCI · Guess the destination"
+time = "09:15"
+file = "post1_commercial.mp4"
+platforms = ["facebook", "tiktok"]
+
+[config.slots.private]
+title = "Private jets"
+time = "11:15"
+file = "post2_private.mp4"
+platforms = ["facebook", "tiktok"]
+
+[config.slots.all]
+title = "Metro scoreboard"
+time = "18:15"
+file = "post4_all.mp4"
+platforms = ["facebook", "tiktok"]
+
+[config.slots.wrap]
+title = "Sunday weekly wrap"
+time = "10:15"
+file = "post5_wrap.mp4"
+platforms = ["facebook", "tiktok"]
+days = ["sun"]
+
+[config.slots.rivalry]   # off until KC launches (see cloud/config.toml)
+title = "Omaha vs. Kansas City"
+time = "15:15"
+file = "post6_rivalry.mp4"
+platforms = ["facebook", "tiktok"]
+days = ["thu"]
+enabled = false
+
+[config.testing]
+enabled = false
+
+# KC's lineup: the 9 AM post is always Guess the destination, 6 PM the metro scoreboard,
+# 11 AM the private-jet count (the lead format).
+[config.daily_formats]
+commercial = "guess"
+all = "scoreboard"
+
+[config.formats]
+
+[config.posts_on]
+
+[config.hashtags.common]
+default = ["#SkyBirdKC", "#KansasCity", "#KC", "#avgeek", "#aviation", "#planespotting"]
+optional = ["#KCMO", "#Missouri", "#Kansas"]
+
+[config.hashtags.commercial]
+default = ["#KCI", "#MCI", "#KansasCityAirport", "#travel"]
+optional = ["#airport"]
+
+[config.hashtags.private]
+default = ["#privatejet", "#bizjet", "#businessaviation", "#KCDowntownAirport", "#JohnsonCounty"]
+optional = ["#privateaviation"]
+
+[config.hashtags.all]
+default = ["#KCI", "#KansasCityMetro", "#generalaviation"]
+optional = ["#PlaneSpotting"]
+
+[config.hashtags.tiktok]
+commercial = ["#SkyBirdKC", "#KansasCity", "#KCI", "#avgeek", "#planespotting"]
+private = ["#SkyBirdKC", "#KansasCity", "#privatejet", "#avgeek", "#aviation"]
+all = ["#SkyBirdKC", "#KansasCity", "#avgeek", "#aviation", "#planespotting"]
+
+# Accounts KC posts may tag (only once a handle is confirmed). Airlines are shared with Omaha.
+[accounts]
+
+[traffic]   # KCI's own numbers, for the quiet build's traffic check
+monthly_ops = 9750       # 117,030 aircraft operations in 2025 / 12 (KCI traffic statistics; confirm on flykc.com)
+source = "KCI traffic statistics, 2025"
+low_pct = 70             # SkyBird's count as % of KCI's: below this, OpenSky may be missing flights
+high_pct = 115
+
+[review]    # the day-30 review in the weekly report
+review_day = 30
+keep_pct = 25            # keep a channel averaging at least 25% of the best KC channel's views...
+keep_views = 150         # ...or at least 150 views a post
+viral_views = 3000       # success: TikTok grows week over week AND one post passes 3,000 views
+facebook_daily = 1400    # Facebook (if on) must average 1,400 views a day

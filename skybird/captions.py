@@ -135,6 +135,10 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
     field = max(stats.get("airports") or [{}], key=lambda a: _n(a.get("count")))
     ev = events[0] if events else None
     ev_hook = (ev.get("caption_hook") or "").strip() if ev else ""
+    names = list(cfg.metro.values())   # the city's airfields, in order
+    field_list = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+    field_or = ", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0]
+    n_fields = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}.get(len(names), str(len(names)))
     small_txt = ""
     if slot_key == "private" and "jets" in stats:   # private jets and small planes are counted apart
         total = _n(stats.get("jets"))
@@ -169,11 +173,11 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
         if top_city:
             question += f" {day}'s favorite: {top_city}."
     else:
-        friendly = f"Morning, Omaha. {n} flights across Eppley, Millard, Council Bluffs and Offutt on {day}."
+        friendly = f"Morning, Omaha. {n} flights across {field_list} on {day}."
         if field.get("code"):
             friendly += f" Busiest field: {field.get('name') or field['code']} with {_n(field.get('count'))}."
         deadpan = f"{n} takeoffs and landings across the metro on {day}. We counted every one. Twice."
-        question = f"Which field is closest to you: Eppley, Millard, Council Bluffs or Offutt? {n} flights across the metro on {day}."
+        question = f"Which field is closest to you: {field_or}? {n} flights across the metro on {day}."
     if ev_hook:
         friendly += f" {ev_hook}"
     friendly += "\n\nSee you up there."
@@ -196,7 +200,7 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
                "the ones broadcasting their position.")
         guess = ""  # military stays counts-only and low-key: no guessing games
     else:
-        dyk = f"Did you know? There were {n} takeoffs and landings across the Omaha metro's four airfields {when}."
+        dyk = f"Did you know? There were {n} takeoffs and landings across the Omaha metro's {n_fields} airfields {when}."
         if field.get("code"):
             dyk += f" Busiest field: {field.get('name') or field['code']}."
         guess = f"Which Omaha-area airport do you think was busiest {when}? Drop your guess 👇"
@@ -241,6 +245,7 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
     opts.sort(key=lambda o: o["id"] != first)
     for o in opts:
         o["cta"] = cta[0] if cta else ""
+        o["text"] = cfg.local(o["text"])   # Kansas City: KCI, MCI, Kansas City (Omaha unchanged)
     return opts
 
 
@@ -350,6 +355,8 @@ def account_handle(cfg: Config, key: str, platform: str) -> str:
     """The account's handle on this platform if it's confirmed (by us or by you), else ''."""
     from .settings import load_settings
     a = ACCOUNTS[key]
+    if cfg.city_id != "omaha":   # another city tags only its own accounts (and the airlines)
+        a = (cfg.city.get("accounts") or {}).get(key) or (a if a.get("airline") else {})
     yours = load_settings(cfg.data_dir).get("account_handles", {}).get(key, {})
     if yours.get(platform):
         return yours[platform]   # a handle you entered or confirmed in Settings

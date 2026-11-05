@@ -1,0 +1,25 @@
+# SkyBird city profile: Omaha (the default city; every command without --city runs it).
+# Shared settings (post times, testing, hashtags...) live in cloud/config.toml; a city can
+# replace any of those sections under [config.<section>] (see cities/kc.toml).
+id = "omaha"
+name = "Omaha"
+brand = "SkyBird - Omaha"
+handle = "@skybirdomaha"
+hashtag = "#SkyBirdOmaha"
+timezone = "America/Chicago"
+flight_day_start = "03:30"
+platforms = ["facebook", "tiktok"]   # Instagram paused Nov 4, 2026
+hub = "KOMA"
+hub_name = "Eppley"                  # how captions name the hub airport
+board_check = true                   # compare arrivals with flyoma.com's arrivals board
+
+[buffer_channels]   # Omaha's own Buffer channels (IDs from Buffer, not secret). A
+                    # BUFFER_CHANNEL_OMAHA_<PLATFORM> secret, if set, replaces one.
+facebook = "6abc75edea19ca0bde2ccf21"   # SkyBird Omaha (page)
+tiktok = "6abc7609ea19ca0bde2ccfc7"     # skybirdomaha
+
+[airports]   # ICAO = [short name, role]: hub, ga, business, military
+KOMA = ["Eppley", "hub"]
+KMLE = ["Millard", "ga"]
+KCBF = ["Council Bluffs", "ga"]
+KOFF = ["Offutt", "military"]

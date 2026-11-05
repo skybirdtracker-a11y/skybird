@@ -89,6 +89,17 @@ file = "post5_wrap.mp4"
 platforms = ["instagram", "facebook", "tiktok"]
 days = ["sun"]
 
+# Thursdays: "Omaha vs. Kansas City: who flew more private jets this week?" Built only from
+# both cities' saved days (no OpenSky requests) and posted on both cities' accounts.
+# Off until Kansas City launches: set enabled = true here and in cities/kc.toml.
+[slots.rivalry]
+title = "Omaha vs. Kansas City"
+time = "15:00"
+file = "post6_rivalry.mp4"
+platforms = ["instagram", "facebook", "tiktok"]
+days = ["thu"]
+enabled = false
+
 # ---- New concepts (the test) ------------------------------------------------
 # 3 posts a day (9 AM, 11 AM, 6 PM) plus the Sunday wrap; Offutt is occasional. Each
 # day `per_day` of the 3 are swapped for new concepts. Which post stays regular rotates
@@ -131,6 +142,26 @@ hours = 1
 [posts_on]
 "2026-10-30" = ["private"]    # 1-post day: private jets instead of Offutt
 
+# ---- OpenSky budget (requests per day; ceilings, not targets) ----------------------
+# Every request is counted per day, city and category in cloud/data/opensky_ledger.json,
+# shared by every run and city. The account allows 4,000 a day; `total` can never go
+# above 3,999. Anything else using the same OpenSky account (a manual test, the old PC
+# version) counts against the same 4,000, so SkyBird also reads OpenSky's own count:
+# under `low_remaining` left it stops fill-in and type lookups; under
+# `critical_remaining` only flight lists for a city that doesn't have its day yet.
+# Manual runs may also use the shared reserve (total minus the cities' limits).
+[opensky_budget]
+total = 3999
+per_city = 1600
+lists = 40          # each city's core flight lists (one per airport and direction)
+fill_in = 600       # arrival fill-in lookups
+types = 400         # aircraft-type lookups (the cache is shared, so repeat planes cost nothing)
+backfill = 60       # one-time history backfill (e.g. Offutt's 7-day counts)
+low_remaining = 400
+critical_remaining = 100
+alert_pct = 80      # phone alert when a day passes 80% of a limit
+keep_for_lists = 40 # held back for each city that hasn't pulled its day's lists yet
+
 # ---- How posts get published ----------------------------------------------
 [publisher]
 # "buffer"      = through buffer.com's FREE plan (3 channels = IG + FB + TikTok). No developer
@@ -158,12 +189,20 @@ ntfy_topic = ""          # e.g. "skybird-omaha-7q4m2" (make it hard to guess; an
 dashboard_url = ""       # e.g. "http://desktop-joshu:8787" (Tailscale name) or "http://192.168.1.20:8787"
 
 # ---- Platforms ------------------------------------------------------------
-[buffer_channels]
-# Omaha's own Buffer channels (IDs from Buffer: not secret). SkyBird posts ONLY to these.
-# The Buffer account also has Kansas City's TikTok, so it must never pick "the TikTok
-# channel" by kind. A platform without an ID here is not posted to.
-facebook = "6abc75edea19ca0bde2ccf21"   # SkyBird Omaha (page)
-tiktok = "6abc7609ea19ca0bde2ccfc7"     # skybirdomaha
+[buffer]
+# Buffer's free plan: 3 channels and 10 posts waiting at a time. Each post goes into
+# Buffer about schedule_ahead_hours before its time (the hourly check run does it), so
+# only a few wait in Buffer at once. Set just_in_time = false to put the whole day in at
+# the daily run instead (the old way).
+just_in_time = true
+schedule_ahead_hours = 2.5
+max_scheduled = 10
+# Buffer API calls, all cities together. Checks, numbers and setup stop while the last
+# keep_for_posting calls are left; under backoff_pct of a Buffer rate window left, only
+# scheduling goes ahead until it resets.
+daily_calls = 60
+keep_for_posting = 20
+backoff_pct = 20
 
 [instagram]
 # Paused Nov 4, 2026 (Kansas City launch plan): Omaha posts to Facebook + TikTok only.

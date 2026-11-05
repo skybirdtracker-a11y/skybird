@@ -18,6 +18,13 @@ concurrency:
 
 jobs:
   report:
+    # One job per city (cities/<city>.toml), one at a time so they share SkyBird's memory.
+    # Kansas City is in its quiet build (dry run: it posts nothing).
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        city: [omaha, kc]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -35,19 +42,25 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: cloud/data
-          key: skybird-data-${{ github.run_id }}
+          key: skybird-data-${{ github.run_id }}-${{ matrix.city }}
           restore-keys: skybird-data-
 
       - name: Collect Buffer's numbers and write the report
         env:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          BUFFER_CHANNEL_OMAHA_FACEBOOK: ${{ secrets.BUFFER_CHANNEL_OMAHA_FACEBOOK }}
+          BUFFER_CHANNEL_OMAHA_TIKTOK: ${{ secrets.BUFFER_CHANNEL_OMAHA_TIKTOK }}
+          BUFFER_CHANNEL_OMAHA_INSTAGRAM: ${{ secrets.BUFFER_CHANNEL_OMAHA_INSTAGRAM }}
+          BUFFER_CHANNEL_KC_TIKTOK: ${{ secrets.BUFFER_CHANNEL_KC_TIKTOK }}
+          BUFFER_CHANNEL_KC_FACEBOOK: ${{ secrets.BUFFER_CHANNEL_KC_FACEBOOK }}
+          BUFFER_CHANNEL_KC_INSTAGRAM: ${{ secrets.BUFFER_CHANNEL_KC_INSTAGRAM }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: python -m skybird --config cloud/config.toml cloud-run --weekly-report
+        run: python -m skybird --config cloud/config.toml --city ${{ matrix.city }} cloud-run --weekly-report
 
       - name: Save SkyBird's memory
         if: always()
         uses: actions/cache/save@v6
         with:
           path: cloud/data
-          key: skybird-data-${{ github.run_id }}
+          key: skybird-data-${{ github.run_id }}-${{ matrix.city }}

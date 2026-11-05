@@ -33,6 +33,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="skybird", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", help="path to config.toml")
+    ap.add_argument("--city", help="which city to run (cities/<city>.toml); default: omaha")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("serve"); p.add_argument("--no-scheduler", action="store_true")
     p.add_argument("--wait", type=float, default=0, help="seconds to wait first (used by Restart)")
@@ -60,7 +61,8 @@ def main(argv=None):
     p.add_argument("--at", default="", help="post time HH:MM for --only posts (default: their usual time)")
     p.add_argument("--check-hosts", action="store_true", help="only test which video hosts accept uploads")
     p.add_argument("--test-notify", action="store_true", help="only send a test phone notification")
-    p.add_argument("--check-posts", action="store_true", help="only ask Buffer whether today's posts went out")
+    p.add_argument("--check-posts", action="store_true", help="only put due posts into Buffer and check earlier ones went out")
+    p.add_argument("--connect", action="store_true", help="only look up the Buffer channels again and show which secret each belongs in")
     p.add_argument("--weekly-report", action="store_true", help="only collect Buffer's numbers and write the weekly report")
     p.add_argument("--check-opensky", action="store_true", help="only send OpenSky one arrival fill-in request")
     p.add_argument("--probe-board", action="store_true", help="only look at Eppley's arrivals/departures page")
@@ -72,7 +74,7 @@ def main(argv=None):
     if a.cmd == "cloud-run" and a.fresh_data:
         import os
         os.environ["SKYBIRD_FRESH_DATA"] = "1"
-    cfg = load_config(a.config)
+    cfg = load_config(a.config, a.city)
     if sys.stdout is None or sys.stderr is None:  # started via pythonw (no console window)
         out = open(cfg.data_dir / "server.log", "a", encoding="utf-8", buffering=1)
         sys.stdout = sys.stdout or out
@@ -98,6 +100,10 @@ def main(argv=None):
         if a.weekly_report:
             from .report import run as weekly_report
             weekly_report(cfg)
+            return
+        if a.connect:
+            from .cloud import print_channels
+            print_channels(cfg)
             return
         if a.check_posts:
             from .cloud import check_posts

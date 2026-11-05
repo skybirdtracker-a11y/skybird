@@ -19,12 +19,12 @@ concurrency:
 jobs:
   report:
     # One job per city (cities/<city>.toml), one at a time so they share SkyBird's memory.
-    # Kansas City joins the list for its quiet build (dry run: it posts nothing).
+    # Kansas City is in its quiet build (dry run: it posts nothing).
     strategy:
       max-parallel: 1
       fail-fast: false
       matrix:
-        city: [omaha]
+        city: [omaha, kc]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

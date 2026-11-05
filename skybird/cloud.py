@@ -274,6 +274,8 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
 
     times = plan(cfg, today, now, only, at)
     scheduled, problems = [], []
+    from . import report
+    report.record_day(cfg, today)   # the day's counts, kept for the reports and the sample page
     if in_buffer:
         log(cfg, f"{today}: already in Buffer from an earlier run, not scheduled again: {', '.join(sorted(in_buffer))}")
     # Serve the videos from GitHub Pages so Buffer's links play and never expire (publishers/pages_host.py)
@@ -294,6 +296,18 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
             log(cfg, f"Couldn't store the videos on GitHub: {e}")
             if os.environ.get("GITHUB_ACTIONS"):
                 print(f"::warning title=Video storage::{storage_note[:900]}")
+    sample_link = ""
+    if todo and cfg.dry_run and cfg.city.get("sample_days") and os.environ.get("GITHUB_ACTIONS"):
+        # quiet build: the videos and the sample page on GitHub Pages (one push), nothing posts
+        from .publishers import pages_host
+        try:
+            base = pages_host.base_url()
+            page = report.sample_page(cfg, now, base)
+            pages_host.publish(todo, today, city=cfg.city_id, wait=0, keep_days=int(cfg.city["sample_days"]),
+                               pages={f"reports/{cfg.city_id}/sample.html": page})
+            sample_link = f"{base}/reports/{cfg.city_id}/sample.html"
+        except Exception as e:
+            log(cfg, f"Couldn't put the sample on GitHub Pages: {e}")
     jit = just_in_time(cfg) and not cfg.dry_run
     planned = []
     for slot in sorted(cfg.slots, key=lambda s: s.time):
@@ -359,11 +373,15 @@ def run(cfg: Config, *, force: bool = False, now: datetime | None = None,
     body += "\n\nReview them in the Buffer app (Queue): edit or delete anything you don't want before it posts."
     if cfg.city.get("comment_policy"):
         body += "\n\nComments: " + cfg.city["comment_policy"]
+    if cfg.dry_run and cfg.city.get("sample_days"):
+        tc = report.traffic_check(cfg)
+        body += (f"\n\nQuiet build sample: {sample_link}" if sample_link else "") + (f"\n\n{tc}" if tc else "")
     n = len(scheduled) + len(scheduled_later)
     title = "SkyBird (cloud): " + (f"{n} post{'s' if n != 1 else ''} " + ("scheduled" if not scheduled_later else "ready")
                                    if n else "already scheduled earlier" if in_buffer else "nothing scheduled")
     notify.send(cfg, title + (" [dry run]" if cfg.dry_run else ""), body,
-                priority="high" if problems or not scheduled else "default", click=BUFFER_APP)
+                priority="high" if problems or not (scheduled or scheduled_later) else "default",
+                click=sample_link or BUFFER_APP)
     print(title + "\n" + body)
     if not cfg.dry_run:
         try:   # Buffer's numbers, once a day (a few calls for all recent posts)

@@ -224,8 +224,9 @@ def test_numbers_for_many_posts_in_one_call(project):
 
 # ---- just in time ------------------------------------------------------------------------
 
-def make_day(project, monkeypatch, city="omaha"):
+def make_day(project, monkeypatch, city="omaha", ahead=2.5):
     c = cfg_for(project, city)
+    c.raw.setdefault("buffer", {})["schedule_ahead_hours"] = ahead   # the timing rule, independent of the config
     day = fl.build_day(c, fl.demo_raw(date(2026, 11, 4), c))
 
     def fake_render(cfg_, post_date, **kw):
@@ -306,3 +307,16 @@ def test_kc_dry_run_never_contacts_buffer(project, monkeypatch):
     out = cloud.run(c, now=datetime(2026, 11, 6, 3, 40, tzinfo=c.tz))
     cloud.check_posts(c, now=datetime(2026, 11, 6, 8, 35, tzinfo=c.tz))
     assert sent == [] and len(out["scheduled"]) == 3
+
+
+def test_with_a_six_hour_window_the_daily_run_puts_the_morning_post_in(project, monkeypatch):
+    """GitHub runs the hourly check up to an hour off (Nov 5: the 6:35 check ran at 6:29 and
+    missed a 2.5 h window by a minute). With the configured 6 hours, the 3:35 AM run puts the
+    9 AM post in Buffer itself; the hourly checks do the 11 AM and 6 PM posts."""
+    c, sent = make_day(project, monkeypatch, ahead=float(cfg_for(project).section("buffer")["schedule_ahead_hours"]))
+    out = cloud.run(c, now=datetime(2026, 11, 6, 3, 40, tzinfo=c.tz))
+    assert [d.hour for d, *_ in sent] == [9] and len(out["planned"]) == 2
+    cloud.check_posts(c, now=datetime(2026, 11, 6, 5, 29, tzinfo=c.tz))
+    assert [d.hour for d, *_ in sent] == [9, 11]
+    cloud.check_posts(c, now=datetime(2026, 11, 6, 12, 29, tzinfo=c.tz))
+    assert [d.hour for d, *_ in sent] == [9, 11, 18]

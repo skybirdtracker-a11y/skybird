@@ -1185,6 +1185,88 @@ class Reel:
                 cv.text(62, 1480, line, 52, NAVY, cv.f.head, z=12, alpha=a)
             self._finish(cv, t, write)
 
+
+    def airports_scene(self, write, secs: float = 6.0):
+        """Where each of the city's airports is, on a map of the metro with town names, and how
+        many takeoffs and landings each had (the main fields big, the others small)."""
+        from collections import Counter
+        cv = Canvas(self.f)
+        counties, towns = self._map_base(cv)
+        cam = Camera(cv)
+        counted = Counter(m.get("metro") for m in self.post.get("moves") or [] if m.get("group") != "military")
+        skipped = set(self.s.get("fields_skipped") or [])
+        core = list(self.cfg.city.get("core_fields") or list(self.cfg.metro)[:3])
+        fields = []
+        for icao, short in self.cfg.metro.items():
+            pl = fl.place(icao)
+            if not pl:
+                continue
+            x, y = (float(v) for v in proj(pl["lon"], pl["lat"]))
+            fields.append({"icao": icao, "name": short, "x": x, "y": y, "core": icao in core,
+                           "n": None if icao in skipped else counted.get(icao, 0), "lon": pl["lon"]})
+        fields.sort(key=lambda f: (not f["core"], -(f["n"] or 0)))
+        xs, ys = [f["x"] for f in fields], [f["y"] for f in fields]
+        band = (VIEW_BOTTOM - VIEW_TOP - 120) / W   # the map band's height, as a share of the width
+        span = max((max(xs) - min(xs)) * 1.9 + 40, ((max(ys) - min(ys)) * 1.25 + 20) / band, 60)
+        view = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, span)
+        cam.set(*view)
+        self._zoom_detail(counties, towns, view[2])
+        # header card
+        cv.rbox(45, 150, 990, 300, 30, WHITE, z=20, shadow=True)
+        cv.paper_plane(82, 178, 40, fc=WHITE, ec=BIRD, lw=2.4, z=22)
+        name_w = cv.width("SkyBird", 34, cv.f.head)
+        cv.text(134, 207, "SkyBird", 34, NAVY, cv.f.head, z=22)
+        cv.text(134 + name_w + 10, 207, self.brand_tail, 34, BIRD, cv.f.head, z=22)
+        cv.spaced(995, 205, self.date_label, 22, NAVY, cv.f.mono6, spacing=3, ha="right", z=22)
+        cv.spaced(82, 250, "WHERE THE AIRPORTS ARE", 21, BIRD, cv.f.mono, spacing=3.2, z=22)
+        cv.text(78, 330, f"{len(fields)} airports,", 76, NAVY, cv.f.head, z=22)
+        cv.text(78, 410, "one metro.", 76, BIRD, cv.f.head, z=22)
+        cx_px = W / 2
+        placed, arts = [], []
+        for i, f in enumerate(fields):   # main fields first, so they get the clean spots
+            px, py = cam.px(f["x"], f["y"])
+            big = f["core"]
+            ms, col = (22, NAVY) if big else (14, BIRD)
+            dot, = cv.map.plot([f["x"]], [f["y"]], "o", ms=ms * PX, color=col, mec=WHITE, mew=4 * PX, zorder=30, alpha=0)
+            label = f["name"] + (f"  {f['n']:,}" if f["n"] is not None else "  –")
+            size, h = (30, 56) if big else (24, 46)
+            w = cv.width(label, size, cv.f.head if big else cv.f.body) + 34
+            left = px < cx_px - 40
+            bx = max(20, px - w - 24) if left else min(W - 20 - w, px + 24)
+            by = py - h / 2
+            for step in (0, 1, -1, 2, -2, 3, -3, 4, -4):   # nudge up/down until it doesn't overlap
+                y = by + step * (h + 8)
+                if all(not (bx < qx + qw + 6 and qx < bx + w + 6 and y < qy + qh + 4 and qy < y + h + 4)
+                       for qx, qy, qw, qh in placed + [(px - 14, py - 14, 28, 28)]):
+                    by = y
+                    break
+            placed.append((bx, by, w, h))
+            line = None
+            if abs(by + h / 2 - py) > 4:   # moved: a short line back to its pin
+                ex = bx + w if left else bx
+                line, = cv.ui.plot([px, ex], [py, by + h / 2], color=NAVY if big else BIRD, lw=2 * PX, zorder=29, alpha=0)
+            box = cv.rbox(bx, by, w, h, 16, NAVY if big else WHITE, ec="none" if big else "#C3D2E2",
+                          lw=0 if big else 2, z=31, alpha=0)
+            txt = cv.text(bx + 17, by + h / 2 + 1, label, size, WHITE if big else NAVY, cv.f.head if big else cv.f.body,
+                          va="center", z=32, alpha=0)
+            arts.append((0.3 + i * 0.28, dot, box + ([line] if line else []), txt))
+        note = cv.text(W / 2, 1450, "Every takeoff and landing, every public airport in the metro.", 32, INK,
+                       cv.f.body, ha="center", z=22, alpha=0)
+        self._sample_stamp(cv)
+        fade = self._fade(cv)
+        for fi in range(int(secs * FPS)):   # one canvas, animated (like the flight map)
+            t = fi / FPS
+            for t0, dot, box, txt in arts:
+                a = max(0.0, min(1.0, (t - t0) / 0.35))
+                dot.set_alpha(a)
+                for b in box:
+                    b.set_alpha(a)
+                txt.set_alpha(a)
+            note.set_alpha(max(0.0, min(1.0, (t - 0.3 - len(arts) * 0.28) / 0.5)))
+            fade.set_alpha(max(0.0, 1 - t / 0.3))
+            write(cv.frame())
+        cv.close()
+
     # ---- whole reel ----
     def render(self, out: Path):
         import imageio_ffmpeg
@@ -1199,6 +1281,8 @@ class Reel:
             self.stats_scene(w.send)
         elif self.fmt == "scoreboard":
             self.map_scene("dep", w.send, first_scene=True, secs=7.0)
+            if self.cfg.city.get("locator_map"):   # where each airport is (cities with many fields)
+                self.airports_scene(w.send)
             self.scoreboard_scene(w.send)
         elif self.fmt == "wrap":
             self.week_scene(w.send)
@@ -1289,6 +1373,7 @@ def _complete_day(cfg: Config, raw: list, flight_day: date, session, master: Pat
     info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), session)   # type lookups: private planes only
     master.parent.mkdir(parents=True, exist_ok=True)
     master.write_text(json.dumps({"flights": raw, "eppley_arrivals": breakdown,
+                                  "fields_skipped": list(fl.SKIPPED_FIELDS),
                                   "fetched_at": int(time.time())}), encoding="utf-8")
     for old in sorted(master.parent.glob("*.json"))[:-45]:   # keep 45 days (weekly + holiday formats)
         old.unlink(missing_ok=True)
@@ -1304,6 +1389,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
     log(cfg, f"Rendering {'SAMPLE ' if demo else ''}videos for flight day {flight_day} into {folder}")
     session = requests.Session()
     breakdown = {}
+    skipped: list[str] = []   # fields left out to save OpenSky credits (see core_fields)
     fl.USED.clear()   # the request budget is per run (the PC keeps SkyBird running for days)
     master = cfg.data_dir / "flights" / f"{flight_day.isoformat()}.json"
     fresh = os.environ.get("SKYBIRD_FRESH_DATA") in ("1", "true", "yes")
@@ -1314,6 +1400,7 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
         # backup runs never spend the daily allowance again.
         saved = json.loads(master.read_text(encoding="utf-8"))
         raw, breakdown = saved["flights"], saved.get("eppley_arrivals", {})
+        skipped = saved.get("fields_skipped") or []
         info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), None)
         session = None   # nothing else may ask OpenSky either (e.g. the military history)
         log(cfg, f"Using the flight list already pulled for {flight_day} ({len(raw)} flights; no OpenSky requests)")
@@ -1334,14 +1421,18 @@ def render_day(cfg: Config, post_date: date, *, demo: bool = False, slots: list[
             raw = None
         if raw is None:
             raw, breakdown = saved["flights"], saved.get("eppley_arrivals", {})
+            skipped = saved.get("fields_skipped") or []
             info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), None)
             session = None
         else:
             from .budget import ledger
             ledger(cfg).lists_done()   # this city has its day: lower-priority requests may use the rest
+            skipped = list(fl.SKIPPED_FIELDS)
             raw, info, breakdown = _complete_day(cfg, raw, flight_day, session, master)
     _save_flight_list(cfg, post_date, flight_day, raw)
     day = fl.build_day(cfg, raw, info)
+    for v in day["posts"].values():   # so the map and captions only count the fields asked about
+        v["stats"]["fields_skipped"] = skipped
     week = fl.military_week(cfg, flight_day, day["posts"]["military"]["stats"]["flights"],
                             session=None if demo else session, backfill=not demo)
     from . import VERSION

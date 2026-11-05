@@ -135,7 +135,8 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
     field = max(stats.get("airports") or [{}], key=lambda a: _n(a.get("count")))
     ev = events[0] if events else None
     ev_hook = (ev.get("caption_hook") or "").strip() if ev else ""
-    names = list(cfg.metro.values())   # the city's airfields, in order
+    skipped = set(stats.get("fields_skipped") or [])   # left out today to save OpenSky credits
+    names = [n for i, n in cfg.metro.items() if i not in skipped]   # the city's airfields, in order
     n_fields = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine",
                 10: "ten"}.get(len(names), str(len(names)))
     shown = [a["name"] for a in stats.get("airports") or [] if a.get("code") != "OTHER"]

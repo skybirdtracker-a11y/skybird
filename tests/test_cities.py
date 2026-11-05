@@ -2,7 +2,7 @@
 import json
 import shutil
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -178,3 +178,38 @@ def test_kc_day_makes_posts_only_for_kc_platforms(project, monkeypatch):
     assert called == []                                       # dry run: Buffer never contacted
     assert "Guess the destination" in st["posts"]["commercial"]["title"]
     assert len(out["scheduled"]) == 3
+
+
+def test_kc_events_land_on_the_posts_that_show_those_flights(project):
+    """match = "flight_day": a Sunday Chiefs game is on Tuesday's posts (2-day lag), with the
+    teaser on the posts before; the game-day private post the same Tuesday."""
+    from skybird import events
+    k = cfg_for(project, "kc")
+
+    def hooks(d, slot="all"):
+        return [(e["name"], e["phase"]) for e in events.events_for(k, d, slot)]
+    jets = "Chiefs vs Jets (Arrowhead)"
+    assert (jets, "lead_up") in hooks(date(2026, 11, 6)) and (jets, "lead_up") in hooks(date(2026, 11, 8))
+    assert not any(n == jets for n, _ in hooks(date(2026, 11, 9)))       # Monday's posts show Saturday
+    assert (jets, "during") in hooks(date(2026, 11, 10))                  # Tuesday's posts show Sunday
+    assert not any(n == jets for n, _ in hooks(date(2026, 11, 11)))
+    assert formats.day_schedule(k, date(2026, 11, 10))["formats"]["private"] == "gameday"
+    # a multi-day event covers the posts showing each of its days
+    big12 = "Big 12 men's basketball tournament (T-Mobile Center)"
+    on = [d for d in (date(2027, 3, 10) + timedelta(days=i) for i in range(9)) if (big12, "during") in hooks(d)]
+    assert on[0] == date(2027, 3, 11) and on[-1] == date(2027, 3, 16)
+    # Omaha's events keep matching the post date
+    om = cfg_for(project)
+    ev = events.load_events(om)[0]
+    assert ev.get("match") != "flight_day" and any(e["name"] == ev["name"] for e in events.events_for(om, ev["start"]))
+
+
+def test_kc_event_file_follows_the_brand_rules(project):
+    import tomllib
+    raw = tomllib.loads((project / "events" / "kc.toml").read_text())["event"]
+    assert all(e.get("match") == "flight_day" for e in raw)
+    games = [e for e in raw if e.get("gameday")]
+    assert all("Chiefs" in e["name"] for e in games) and len(games) == 5
+    assert all(e["start"].weekday() in (0, 5, 6) for e in games)          # Sun/Mon (Week 18 may be Sat)
+    concerts = [e for e in raw if "concert" in e["name"].lower()]
+    assert concerts and all("(T-Mobile Center)" in e["name"] for e in concerts)   # by venue, never the artist

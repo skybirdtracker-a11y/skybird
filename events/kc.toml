@@ -1,56 +1,214 @@
-# SkyBird - Kansas City event calendar. Same fields as events/omaha.toml.
-# PLACEHOLDER DATES: the owner confirms each one (confirmed = false until checked).
-# KC event posts use the normal 2-day lag: a Sunday game shows on Tuesday's posts.
+# SkyBird - Kansas City event calendar (Nov 2026 – Apr 2027). Same fields as events/omaha.toml, plus:
+#
+#   match = "flight_day"   start/end are the event's real dates. Its hook goes on the posts
+#                          that SHOW those days' flights (2-day lag: a Sunday game is on
+#                          Tuesday's posts); the lead-up teaser runs on the posts from
+#                          lead_days before the event through its first day.
+#   gameday = true         Chiefs home games: that day's private post becomes "Game-day private
+#                          jets" (posted with the lag).
+#
+# Brand rules: never name people. Concerts are listed by venue, never by the artist.
+# confirmed = false: the date came from a third-party listing or isn't final; re-check it.
+# Researched Nov 4, 2026 (Chiefs schedule as reported by CBS Sports, Fox Sports and Yahoo
+# Sports; venues from Visit KC, T-Mobile Center and ticket listings).
+
+# ============================== November 2026 ==============================
 
 [[event]]
-name = "Chiefs home game (Arrowhead)"
+name = "Two-night country concert (T-Mobile Center)"
+start = 2026-11-06
+end = 2026-11-07
+match = "flight_day"
+confirmed = true
+priority = 2
+slots = ["private", "all"]
+note = "Two big arena nights downtown. Fans fly in from across the region."
+hook = "🎤 Two big concert nights at T-Mobile Center. Did you fly in for one?"
+hashtags = ["#KCConcerts", "#TMobileCenter"]
+
+[[event]]
+name = "KC Current NWSL quarterfinal (CPKC Stadium)"
+start = 2026-11-07
+end = 2026-11-07
+match = "flight_day"
+confirmed = false        # from a ticket listing; the playoff bracket decides it
+priority = 2
+slots = ["all"]
+hook = "⚽ Playoff soccer at CPKC Stadium. Did the visitors fly in through KCI?"
+hashtags = ["#KCCurrent", "#NWSL"]
+
+[[event]]
+name = "Chiefs vs Jets (Arrowhead)"
 start = 2026-11-08
 end = 2026-11-08
-confirmed = false
+match = "flight_day"
+confirmed = true
 priority = 3
 slots = ["private", "all"]
-gameday = true          # the private post becomes "Chiefs game-day private jets" (posted with the lag)
+gameday = true
+lead_days = 2
+lead_hook = "🏈 Chiefs host the Jets at Arrowhead on Sunday. Watch for the private jets."
 hook = "🏈 Chiefs game day at Arrowhead. The private jets came in."
 hashtags = ["#ChiefsKingdom", "#Chiefs"]
 
 [[event]]
-name = "Chiefs home game (Arrowhead)"
+name = "Chiefs vs Cardinals (Arrowhead)"
 start = 2026-11-22
 end = 2026-11-22
-confirmed = false
+match = "flight_day"
+confirmed = true
 priority = 3
 slots = ["private", "all"]
 gameday = true
+lead_days = 2
+lead_hook = "🏈 Chiefs host the Cardinals at Arrowhead on Sunday. Watch for the private jets."
 hook = "🏈 Chiefs game day at Arrowhead. The private jets came in."
 hashtags = ["#ChiefsKingdom", "#Chiefs"]
 
 [[event]]
-name = "Chiefs home game (Arrowhead)"
+name = "Thanksgiving travel + Plaza Lighting Ceremony"
+start = 2026-11-25
+end = 2026-11-29
+match = "flight_day"
+confirmed = true
+priority = 2
+slots = ["all_posts"]
+note = "The Wednesday before and the Sunday after are among KCI's busiest days. The Plaza lights go on Thanksgiving night."
+lead_days = 2
+lead_hook = "🦃 Thanksgiving travel starts this week. KCI is about to get busy."
+hook = "🦃 Thanksgiving travel at KCI. Who flew home for the holiday?"
+hashtags = ["#Thanksgiving", "#KCI"]
+
+# ============================== December 2026 ==============================
+
+[[event]]
+name = "Kansas vs Missouri men's basketball (T-Mobile Center)"
 start = 2026-12-06
 end = 2026-12-06
-confirmed = false
+match = "flight_day"
+confirmed = true
+priority = 2
+slots = ["private", "all"]
+note = "The Border War downtown. Both fan bases are within driving distance, so watch the private side."
+hook = "🏀 Border War at T-Mobile Center. Did anyone fly in for it?"
+hashtags = ["#BorderWar", "#KCHoops"]
+
+[[event]]
+name = "Holiday concerts (T-Mobile Center)"
+start = 2026-12-07
+end = 2026-12-07
+match = "flight_day"
+confirmed = true
+priority = 1
+slots = ["all"]
+hook = "🎄 Holiday concert night at T-Mobile Center."
+hashtags = ["#KCConcerts", "#TMobileCenter"]
+
+[[event]]
+name = "Holiday travel"
+start = 2026-12-18
+end = 2027-01-03
+match = "flight_day"
+confirmed = true
+priority = 1
+slots = ["commercial", "all"]
+note = "Holiday travel rush. The Fridays and Sundays around Christmas and New Year's are the peaks."
+hook = "🎄 Holiday travel season at KCI. Where is everyone headed?"
+hashtags = ["#HolidayTravel", "#KCI"]
+
+[[event]]
+name = "Chiefs vs Patriots, Monday night (Arrowhead)"
+start = 2026-12-21
+end = 2026-12-21
+match = "flight_day"
+confirmed = true          # date confirmed; kickoff time reported differently, doesn't matter here
 priority = 3
 slots = ["private", "all"]
 gameday = true
+lead_days = 2
+lead_hook = "🏈 Monday Night Football at Arrowhead: Chiefs vs Patriots. Watch for the private jets."
+hook = "🏈 Monday night game at Arrowhead. The private jets came in."
+hashtags = ["#ChiefsKingdom", "#Chiefs", "#MNF"]
+
+[[event]]
+name = "Chiefs vs 49ers (Arrowhead)"
+start = 2026-12-27
+end = 2026-12-27
+match = "flight_day"
+confirmed = true
+priority = 3
+slots = ["private", "all"]
+gameday = true
+lead_days = 2
+lead_hook = "🏈 Chiefs host the 49ers at Arrowhead on Sunday. Watch for the private jets."
 hook = "🏈 Chiefs game day at Arrowhead. The private jets came in."
 hashtags = ["#ChiefsKingdom", "#Chiefs"]
+
+# ============================== January 2027 ==============================
+
+[[event]]
+name = "Chiefs vs Raiders, Week 18 (Arrowhead)"
+start = 2027-01-10
+end = 2027-01-10
+match = "flight_day"
+confirmed = false          # the NFL sets Week 18 dates late: Jan 9 or 10. Fix the date once it's announced.
+priority = 3
+slots = ["private", "all"]
+gameday = true
+lead_days = 2
+lead_hook = "🏈 Chiefs host the Raiders at Arrowhead to close the season. Watch for the private jets."
+hook = "🏈 Chiefs game day at Arrowhead. The private jets came in."
+hashtags = ["#ChiefsKingdom", "#Chiefs"]
+# Chiefs home playoff games, if any: add them here with gameday = true once the NFL sets them.
+
+# ============================== March 2027 ==============================
+
+[[event]]
+name = "Big 12 women's basketball tournament (T-Mobile Center)"
+start = 2027-03-04
+end = 2027-03-08
+match = "flight_day"
+confirmed = false          # held the week before the men's; 2027 dates not yet published
+priority = 2
+slots = ["private", "all"]
+hook = "🏀 Big 12 women's tournament week in Kansas City."
+hashtags = ["#Big12WBB", "#Big12"]
 
 [[event]]
 name = "Big 12 men's basketball tournament (T-Mobile Center)"
 start = 2027-03-09
-end = 2027-03-13
-confirmed = false
+end = 2027-03-14
+match = "flight_day"
+confirmed = true
 priority = 3
 slots = ["all_posts"]
-hook = "🏀 Big 12 tournament week in Kansas City."
+note = "Sixteen teams and their fans for six days: one of KC's biggest private-jet weeks."
+lead_days = 2
+lead_hook = "🏀 Big 12 tournament week starts Tuesday in Kansas City. Watch the arrivals."
+hook = "🏀 Big 12 tournament week in Kansas City. Fans flew in from all over."
 hashtags = ["#Big12MBB", "#Big12"]
 
 [[event]]
-name = "Royals home opener (Kauffman Stadium)"
-start = 2027-04-01
-end = 2027-04-01
-confirmed = false
+name = "Royals Opening Day vs Twins (Kauffman Stadium)"
+start = 2027-03-25
+end = 2027-03-25
+match = "flight_day"
+confirmed = true           # the earliest Opening Day in Royals history, if there's no MLB work stoppage
 priority = 3
 slots = ["all_posts"]
-hook = "⚾ Royals home opener at the K."
+lead_days = 2
+lead_hook = "⚾ Royals Opening Day is Thursday at the K."
+hook = "⚾ Royals Opening Day at the K."
 hashtags = ["#Royals", "#OpeningDay"]
+
+[[event]]
+name = "NCAA men's basketball Midwest Regional (T-Mobile Center)"
+start = 2027-03-26
+end = 2027-03-28
+match = "flight_day"
+confirmed = true
+priority = 3
+slots = ["private", "all"]
+note = "Sweet 16 and Elite Eight games on Friday and Sunday. Fans of four schools fly in."
+hook = "🏀 March Madness in Kansas City: the Midwest Regional. Fans of four schools flew in."
+hashtags = ["#MarchMadness", "#KCHoops"]

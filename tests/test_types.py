@@ -90,3 +90,22 @@ def test_private_caption_counts_what_the_video_counts(project):
     only_jets = {"flights": 16, "departures": 8, "arrivals": 8, "jets": 16, "small": 0, "unknown": 0}
     assert "16 private jet takeoffs and landings" in " ".join(
         o["text"] for o in captions.build_options(cfg, "private", only_jets, date(2026, 11, 4)))
+
+
+def test_private_stats_card_adds_up(project):
+    """Nov 6: the card showed 16 jets, 0 small planes, 51 departures, 58 arrivals (93 planes in no box)."""
+    from skybird import render
+    cfg = load_config(project / "cloud" / "config.toml")
+    raw = [{"callsign": f"N{i}AB", "icao24": f"b{i:05d}", "estDepartureAirport": "KOMA", "estArrivalAirport": "KDEN",
+            "firstSeen": 100 + i, "lastSeen": 200 + i} for i in range(6)]
+    info = {"b00000": {"cls": "jet", "family": "Citation"}, "b00001": {"cls": "prop", "family": "172S"},
+            "b00002": {"cls": "prop", "family": "172S"}}
+    post = fl.build_day(cfg, raw, info)["posts"]["private"]
+    reel = render.Reel(cfg, "private", date(2026, 11, 4), post, render.Fonts(), True, week=[])
+    tiles = {label: n for n, label, _ in reel._stats_content()[0]}
+    assert tiles == {"TAKEOFFS + LANDINGS": 6, "PRIVATE JETS": 1, "SMALL PLANES": 2, "TYPE UNKNOWN": 3}
+    info.update({f"b{i:05d}": {"cls": "prop", "family": "SR22"} for i in range(3, 6)})
+    post = fl.build_day(cfg, raw, info)["posts"]["private"]
+    reel = render.Reel(cfg, "private", date(2026, 11, 4), post, render.Fonts(), True, week=[])
+    tiles = {label: n for n, label, _ in reel._stats_content()[0]}
+    assert tiles["PRIVATE JETS"] + tiles["SMALL PLANES"] == tiles["DEPARTURES"] + tiles["ARRIVALS"] == 6

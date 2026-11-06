@@ -784,9 +784,13 @@ class Reel:
         noun = {"commercial": "AIRLINE FLIGHTS", "private": "PRIVATE JETS", "all": "FLIGHTS, ALL FIELDS"}[self.slot]
         tiles = [(s["flights"], noun, NAVY), (s["departures"], "DEPARTURES", NAVY),
                  (s["arrivals"], "ARRIVALS", ORANGE), (s.get("cities_linked", 0), "CITIES LINKED", NAVY)]
-        if self.slot == "private" and "jets" in s:   # jets and small planes, labeled apart
-            tiles = [(s["jets"], "PRIVATE JETS", ORANGE), (s["small"], "SMALL PLANES", NAVY),
-                     (s["departures"], "DEPARTURES", NAVY), (s["arrivals"], "ARRIVALS", NAVY)]
+        if self.slot == "private" and "jets" in s:   # jets and small planes, labeled apart; the tiles add up
+            if s.get("unknown"):   # some planes not identified: total = jets + small + unknown
+                tiles = [(s["flights"], "TAKEOFFS + LANDINGS", NAVY), (s["jets"], "PRIVATE JETS", ORANGE),
+                         (s["small"], "SMALL PLANES", NAVY), (s["unknown"], "TYPE UNKNOWN", MUTED)]
+            else:                  # jets + small = departures + arrivals
+                tiles = [(s["jets"], "PRIVATE JETS", ORANGE), (s["small"], "SMALL PLANES", NAVY),
+                         (s["departures"], "DEPARTURES", NAVY), (s["arrivals"], "ARRIVALS", NAVY)]
         rows = s.get("top_destinations", [])[:5]
         facts = []
         if s.get("first_wheels_up"):

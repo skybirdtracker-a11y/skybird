@@ -611,16 +611,18 @@ def private_week(cfg: Config, day: date, today: dict) -> list[dict]:
         hist = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         hist = {}
-    hist.setdefault(day.isoformat(), {})["private"] = {"jets": today.get("jets", 0), "small": today.get("small", 0)}
+    hist.setdefault(day.isoformat(), {})["private"] = {"jets": today.get("jets", 0), "small": today.get("small", 0), "v": 2}
     out = []
     for i in range(6, -1, -1):
         d = day - timedelta(days=i)
         row = (hist.get(d.isoformat()) or {}).get("private")
+        if row is not None and row.get("v") != 2:   # counted before plane types came from the FAA (small = 0)
+            row = None
         if row is None:
             try:
                 raw = json.loads((cfg.data_dir / "flights" / f"{d.isoformat()}.json").read_text(encoding="utf-8"))["flights"]
                 st = build_day(cfg, raw, aircraft_info(cfg, private_icao24s(cfg, raw), None))["posts"]["private"]["stats"]
-                row = {"jets": st["jets"], "small": st["small"]}
+                row = {"jets": st["jets"], "small": st["small"], "v": 2}
                 hist.setdefault(d.isoformat(), {})["private"] = row
             except (OSError, ValueError, KeyError):
                 row = None

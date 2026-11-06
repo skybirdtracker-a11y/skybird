@@ -136,6 +136,11 @@ jobs:
           POST_TIME: ${{ inputs.post_time }}
         run: |
           only="${ONLY%% *}"; [ "$only" = "every" ] && only=""
+          # Remaking one post (or a time) is for Omaha's live posts: Kansas City, in its quiet
+          # build, runs only in its own daily run (its dry-run notices confused remakes on Nov 6).
+          if [ "${{ matrix.city }}" = "kc" ] && { [ -n "$only" ] || [ -n "$POST_TIME" ]; }; then
+            echo "Kansas City is in its quiet build: skipped for this remake."; exit 0
+          fi
           python -m skybird --config cloud/config.toml --city ${{ matrix.city }} cloud-run \
             ${{ inputs.force && '--force' || '' }} ${{ inputs.dry_run && '--dry-run' || '' }} \
             --only "$only" --day "$DAY" --at "$POST_TIME" ${{ inputs.check_hosts && '--check-hosts' || '' }} ${{ inputs.test_notification && '--test-notify' || '' }} ${{ inputs.fresh_data && '--fresh-data' || '' }} ${{ inputs.probe_board && '--probe-board' || '' }} ${{ inputs.check_opensky && '--check-opensky' || '' }}

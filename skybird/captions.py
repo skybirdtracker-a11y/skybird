@@ -145,11 +145,15 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
         names = shown + (["the metro's other fields"] if rest else [])
     field_list = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
     field_or = ", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0]
-    small_txt = ""
-    if slot_key == "private" and "jets" in stats:   # private jets and small planes are counted apart
-        total = _n(stats.get("jets"))
-        if _n(stats.get("small")):
-            small_txt = f", plus {_n(stats['small']):,} by small planes"
+    small_txt, pnoun, Pnoun = "", "private jet", "Private jets"
+    if slot_key == "private" and "jets" in stats:   # the same total the video counts, then the split
+        jets, small, unk = _n(stats.get("jets")), _n(stats.get("small")), _n(stats.get("unknown"))
+        total = jets + small + unk
+        if small or unk:
+            pnoun, Pnoun = "private-plane", "Private planes"
+            small_txt = f": {jets:,} by jets, {small:,} by small planes"
+            if unk:
+                small_txt += f" and {unk:,} we couldn't identify"
     n = f"{total:,}" if total else "every"
 
     if slot_key == "military":  # counts only: no routes, callsigns, tails or times
@@ -169,12 +173,12 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
         if top_city:
             question += f" {top_city} led {day} with {top.get('count')} flights."
     elif slot_key == "private":
-        friendly = f"Morning, Omaha. {n} private jet takeoffs and landings across the metro fields on {day}{small_txt}."
+        friendly = f"Morning, Omaha. {n} {pnoun} takeoffs and landings across the metro fields on {day}{small_txt}."
         if top_city:
             friendly += f" Most popular city: {top_city}."
         if ftype.get("name"):
             friendly += f" Most common type: {ftype['name']}."
-        deadpan = f"{n} private jet takeoffs and landings on {day}{small_txt}. None of them offered us a ride."
+        deadpan = f"{n} {pnoun} takeoffs and landings on {day}{small_txt}. None of them offered us a ride."
         question = "If you had a private jet for a day, where would you take it from Omaha?"
         if top_city:
             question += f" {day}'s favorite: {top_city}."
@@ -197,7 +201,7 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
               f"Did you know? Eppley handled {n} airline flights {when}, about one every few minutes. ✈️"
         guess = f"Guess before you watch: what was Eppley's top destination {when}? 👇 Answer at the end of the video."
     elif slot_key == "private":
-        dyk = f"Did you know? Private jets made {n} takeoffs and landings around the Omaha metro {when}{small_txt}."
+        dyk = f"Did you know? {Pnoun} made {n} takeoffs and landings around the Omaha metro {when}{small_txt}."
         if ftype.get("name"):
             dyk += f" The most common type was the {ftype['name']}."
         guess = f"Guess: how many private jets flew into Omaha {when}? Closest guess in the comments gets bragging rights."
@@ -212,7 +216,7 @@ def build_options(cfg: Config, slot_key: str, stats: dict, data_date: date,
         guess = f"Which Omaha-area airport do you think was busiest {when}? Drop your guess 👇"
     local = ""
     if ev and slot_key != "military":
-        noun = {"commercial": "airline flights at Eppley", "private": "private jet takeoffs and landings"}.get(slot_key, "takeoffs and landings across the metro")
+        noun = {"commercial": "airline flights at Eppley", "private": f"{pnoun} takeoffs and landings"}.get(slot_key, "takeoffs and landings across the metro")
         if "thanksgiving" in ev.get("name", "").lower():
             local = f"Thanksgiving travel check: Eppley moved {n} flights {when}. Where are you headed? 🦃"
         elif ev_hook:

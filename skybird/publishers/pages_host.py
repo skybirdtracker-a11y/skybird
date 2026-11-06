@@ -113,9 +113,12 @@ def publish(videos: list[Path], day: date, session=None, wait: int = WAIT, city:
             (new / path).parent.mkdir(parents=True, exist_ok=True)
             (new / path).write_text(text, encoding="utf-8")
     _rewrite(day, add, f"Videos for {city + ' ' if city else ''}{day.isoformat()}")
-    links = {v.name: f"{base_url()}/videos/{sub}/{v.name}" for v in videos}
+    # ?v=<time>: Buffer keeps the first copy it fetched for a link, so a remade video (same file
+    # name) needs a new link or the old video goes out (Nov 6). GitHub Pages ignores the query.
+    stamp = int(time.time())
+    links = {v.name: f"{base_url()}/videos/{sub}/{v.name}?v={stamp}" for v in videos}
     if wait:
-        _wait_live(list(links.values()), s, wait)
+        _wait_live(list(links.values()), s, wait, {links[v.name]: v.stat().st_size for v in videos})
     return links
 
 
@@ -135,8 +138,10 @@ def publish_report(page: str, day: date, city: str | None = None) -> str:
     return f"{base_url()}/{folder}/latest.html"
 
 
-def _wait_live(urls: list[str], s, wait: int) -> None:
-    """GitHub takes a minute or so to publish; wait until each link plays as a video."""
+def _wait_live(urls: list[str], s, wait: int, sizes: dict | None = None) -> None:
+    """GitHub takes a minute or so to publish; wait until each link plays as a video, and (with
+    `sizes`, {url: bytes}) until it serves the NEW file: a remake keeps the file name, and until
+    Pages updates, the old video would be served (and kept by Buffer)."""
     deadline = time.time() + wait
     pending = list(urls)
     last = ""
@@ -146,10 +151,13 @@ def _wait_live(urls: list[str], s, wait: int) -> None:
             r = s.get(u, headers={"Range": "bytes=0-1023"}, timeout=30, stream=True)
             ctype = (r.headers.get("Content-Type") or "").lower()
             r.close()
-            if r.status_code in (200, 206) and ctype.startswith("video/"):
+            total = (r.headers.get("Content-Range") or "").rpartition("/")[2] or r.headers.get("Content-Length", "")
+            want = (sizes or {}).get(u)
+            if r.status_code in (200, 206) and ctype.startswith("video/") and \
+                    (not want or not total.isdigit() or int(total) == want):
                 pending.pop(0)
                 continue
-            last = f"HTTP {r.status_code} {ctype}"
+            last = f"HTTP {r.status_code} {ctype}" + (f", still the old file ({total} bytes)" if want and total.isdigit() else "")
         except requests.RequestException as e:
             last = type(e).__name__
         time.sleep(15)

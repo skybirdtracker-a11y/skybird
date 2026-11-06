@@ -140,7 +140,7 @@ def test_pages_videos_per_city_and_old_layout_kept(tmp_path, monkeypatch):
     v = tmp_path / "a.mp4"; v.write_bytes(b"x")
     ph.publish([v], date(2026, 11, 4), S(), wait=5)                          # the old layout (before cities)
     links = ph.publish([v], date(2026, 11, 5), S(), wait=5, city="omaha")
-    assert links["a.mp4"].endswith("/videos/omaha/2026-11-05/a.mp4")
+    assert links["a.mp4"].split("?v=")[0].endswith("/videos/omaha/2026-11-05/a.mp4")   # ?v= so a remake is a new link
     ph.publish([v], date(2026, 11, 5), S(), wait=5, city="kc")
     ph.publish_report("<p>r</p>", date(2026, 11, 5), city="omaha")
     files = subprocess.run(["git", "--git-dir", str(bare), "ls-tree", "-r", "--name-only", "gh-pages"],
@@ -246,3 +246,24 @@ def test_kc_also_asks_nearby_strips_for_departures(project, monkeypatch):
     asked.clear()
     fl.fetch_opensky(om, date(2026, 11, 4), session=object())
     assert ("7MO4", "/flights/departure") not in asked                     # Omaha: arrivals only, as before
+
+
+def test_pages_waits_until_the_remade_video_is_served(monkeypatch):
+    """Nov 6: a remade video kept its file name; Buffer fetched the link before Pages updated and
+    kept the old video. Publishing now waits until the link serves the new file's size."""
+    from skybird.publishers import pages_host as ph
+    monkeypatch.setattr(ph.time, "sleep", lambda s: None)
+    sizes = iter([5000, 5000, 7777])
+
+    class S:
+        def get(self, url, **kw):
+            r = type("R", (), {})(); r.status_code = 206
+            r.headers = {"Content-Type": "video/mp4", "Content-Range": f"bytes 0-1023/{next(sizes)}"}
+            r.close = lambda: None
+            return r
+    ph._wait_live(["u"], S(), wait=600, sizes={"u": 7777})                 # returns once the new size shows
+    with pytest.raises(ph.NotAvailable, match="old file"):
+        ph._wait_live(["u"], type("S2", (), {"get": lambda self, url, **kw: S().get(url) if False else
+                      type("R", (), {"status_code": 206, "headers": {"Content-Type": "video/mp4",
+                                     "Content-Range": "bytes 0-1023/5000"}, "close": lambda self: None})()})(),
+                      wait=0.01, sizes={"u": 7777})

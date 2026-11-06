@@ -844,8 +844,43 @@ def check_opensky(cfg: Config) -> list[str]:
                            f"{r.headers.get('X-Rate-Limit-Remaining', '?')}; answer: {body}")
                 if r.status_code == 200:
                     break
+    out += _probe_types(cfg)
     for ln in out:
         print(ln)
         if os.environ.get("GITHUB_ACTIONS"):
             print(f"::notice title=OpenSky check::{ln[:950]}")
+    return out
+
+
+SAFE_TYPE_FIELDS = ("icaoAircraftClass", "typecode", "model", "manufacturerName", "categoryDescription", "engines")
+
+
+def _probe_types(cfg: Config, n: int = 6) -> list[str]:
+    """Ask OpenSky's aircraft database about a few private planes SkyBird couldn't classify and
+    show ONLY the type fields (never registration, owner or operator: the logs are public)."""
+    import json
+    import requests
+    from . import flights as fl
+    files = sorted((cfg.data_dir / "flights").glob("*.json"))
+    if not files:
+        return ["type probe: no saved flight list"]
+    raw = json.loads(files[-1].read_text(encoding="utf-8"))["flights"]
+    info = fl.aircraft_info(cfg, fl.private_icao24s(cfg, raw), None)
+    unknown = [h for h, v in info.items() if not v.get("cls")][:n]
+    out = [f"type probe: {sum(1 for v in info.values() if v.get('cls') == 'jet')} jets, "
+           f"{sum(1 for v in info.values() if v.get('cls') == 'prop')} props, "
+           f"{sum(1 for v in info.values() if not v.get('cls'))} unknown of {len(info)} private planes"]
+    s = requests.Session()
+    tok = fl._token(cfg, s)
+    h = {"Authorization": f"Bearer {tok}"} if tok else {}
+    for i, hexid in enumerate(unknown):
+        r = s.get(f"{fl.API}/metadata/aircraft/icao/{hexid}", headers=h, timeout=20)
+        try:
+            d = r.json() if r.status_code == 200 else {}
+        except ValueError:
+            d = {}
+        shown = {k: d.get(k) for k in SAFE_TYPE_FIELDS if k in d}
+        out.append(f"plane {i + 1}: HTTP {r.status_code}; fields {sorted(d)[:30] if d else '-'}; type info {shown}; "
+                   f"body starts {r.text[:80]!r}" if r.status_code != 200 else
+                   f"plane {i + 1}: HTTP 200; type info {shown}; fields present: {', '.join(sorted(d))}")
     return out

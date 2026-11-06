@@ -181,7 +181,10 @@ def fetch_opensky(cfg: Config, day: date, session=None) -> list[dict]:
     core = list(cfg.city.get("core_fields") or cfg.metro) if cfg.city else list(cfg.metro)
     extra = [i for i in cfg.metro if i not in core]
     asks = [(icao, kind) for icao in core for kind in ("departure", "arrival")]
-    asks += [(code, "arrival") for code in near_fields(cfg)]   # small fields where hub landings get filed
+    near = near_fields(cfg)   # small fields where OpenSky files hub landings (and, in KC, takeoffs)
+    asks += [(code, "arrival") for code in near]
+    if cfg.city.get("near_field_departures"):
+        asks += [(code, "departure") for code in near]
     SKIPPED_FIELDS.clear()
     if extra:   # the other fields only while OpenSky has credits to spare (core_fields come first)
         from .budget import ledger
@@ -414,7 +417,17 @@ def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:
         cache = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         cache = {}
+    # 1. The FAA registry (free, no OpenSky credits): also re-checks planes saved as unknown
+    from . import aircraft_types
+    for h in icao24s:
+        if h and not (cache.get(h) or {}).get("cls"):
+            got = aircraft_types.lookup(cfg, h)
+            if got:
+                cache[h] = got
+    # 2. OpenSky's aircraft database, while it still answered (retired: "410 Gone" since Nov 2026)
     todo = [h for h in icao24s if h and h not in cache]
+    if cache.get("_opensky_types_gone"):
+        todo = []
     if todo and cfg.secrets.get("opensky_client_id") and session is not None:
         headers = {}
         try:
@@ -432,6 +445,10 @@ def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:
                 _note(cfg, r)
                 if r.status_code == 429:
                     break        # daily allowance used up: stop, and look the rest up another day
+                if r.status_code == 410:   # OpenSky retired this lookup: never ask again
+                    cache["_opensky_types_gone"] = True
+                    log(cfg, "OpenSky's aircraft-type lookup is retired (410 Gone); types come from the FAA registry")
+                    break
                 if r.status_code == 404:
                     cache[h] = {"cls": None, "family": None}   # OpenSky doesn't know this one
                     continue
@@ -444,10 +461,10 @@ def aircraft_info(cfg: Config, icao24s: set, session=None) -> dict:
                 cache[h] = {"cls": cls, "family": family(d.get("model"), d.get("manufacturerName"))}
             except Exception:
                 continue
-        try:
-            path.write_text(json.dumps(cache), encoding="utf-8")
-        except OSError:
-            pass
+    try:
+        path.write_text(json.dumps(cache), encoding="utf-8")
+    except OSError:
+        pass
     return {h: cache.get(h, {"cls": None, "family": None}) for h in icao24s}
 
 

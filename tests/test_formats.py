@@ -198,7 +198,8 @@ def test_private_post_counts_jets_and_small_planes_apart(cfg):
     assert st["top_small_types"][0]["name"] == "Cirrus SR22"
     opts = captions.build_options(cfg, "private", st, date(2026, 10, 31))
     friendly = next(o for o in opts if o["id"] == "friendly")["text"]
-    assert "2 private jet takeoffs and landings" in friendly and "plus 1 by small planes" in friendly
+    assert "4 private-plane takeoffs and landings" in friendly          # the same total the video counts
+    assert "2 by jets, 1 by small planes and 1 we couldn't identify" in friendly
     # the trend: today's numbers, earlier days from the saved lists
     folder = cfg.data_dir / "flights"
     folder.mkdir(parents=True, exist_ok=True)

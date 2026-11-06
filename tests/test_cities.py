@@ -229,3 +229,20 @@ def test_scoreboard_fits_many_fields(project):
     om = cfg_for(project)                                                  # Omaha's 4 fields: unchanged
     four = {"airports": [{"code": c, "name": c, "count": n} for c, n in [("OMA", 180), ("MLE", 20), ("CBF", 9), ("OFF", 6)]]}
     assert [r["code"] for r in formats.scoreboard(om, date(2026, 11, 4), four)["rows"]] == ["OMA", "MLE", "CBF", "OFF"]
+
+
+def test_kc_also_asks_nearby_strips_for_departures(project, monkeypatch):
+    """Nov 4: KCI showed 13 airline departures and 76 arrivals; the missing takeoffs were filed
+    at nearby strips. Kansas City asks those strips for departures too and moves airline ends back."""
+    k = cfg_for(project, "kc")
+    monkeypatch.setattr(fl, "near_fields", lambda cfg: ["7MO4"])
+    asked = []
+    monkeypatch.setattr(fl, "_get", lambda cfg, s, path, params: asked.append((params["airport"], path)) or [])
+    fl.fetch_opensky(k, date(2026, 11, 4), session=object())
+    assert ("7MO4", "/flights/departure") in asked and ("7MO4", "/flights/arrival") in asked
+    raw = [{"callsign": "SWA9", "icao24": "c9", "estDepartureAirport": "7MO4", "estArrivalAirport": "KDEN"}]
+    assert fl.fix_airline_fields(k, raw) == 1 and raw[0]["estDepartureAirport"] == "KMCI"
+    om = cfg_for(project)
+    asked.clear()
+    fl.fetch_opensky(om, date(2026, 11, 4), session=object())
+    assert ("7MO4", "/flights/departure") not in asked                     # Omaha: arrivals only, as before

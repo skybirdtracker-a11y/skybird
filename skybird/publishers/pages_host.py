@@ -102,8 +102,8 @@ def publish(videos: list[Path], day: date, session=None, wait: int = WAIT, city:
 
     def add(new):
         target = new / "videos" / sub
-        if target.exists():
-            shutil.rmtree(target)   # a remake replaces that day's files
+        # a remake replaces only the files it brings; the day's other videos stay (Nov 6: remaking
+        # the 11 AM post removed the 9 AM and 6 PM videos, and the 9 AM post failed in Buffer)
         target.mkdir(parents=True, exist_ok=True)
         for v in videos:
             shutil.copy2(v, target / v.name)

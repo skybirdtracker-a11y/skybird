@@ -267,3 +267,20 @@ def test_pages_waits_until_the_remade_video_is_served(monkeypatch):
                       type("R", (), {"status_code": 206, "headers": {"Content-Type": "video/mp4",
                                      "Content-Range": "bytes 0-1023/5000"}, "close": lambda self: None})()})(),
                       wait=0.01, sizes={"u": 7777})
+
+
+def test_remaking_one_video_keeps_the_days_other_videos(tmp_path, monkeypatch):
+    import subprocess
+    from skybird.publishers import pages_host as ph
+    bare = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    monkeypatch.setenv("SKYBIRD_PAGES_REMOTE", str(bare))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "SkybirdTracker-a11y/skybird"); monkeypatch.setenv("GITHUB_TOKEN", "T")
+    a, b = tmp_path / "post1.mp4", tmp_path / "post2.mp4"
+    a.write_bytes(b"one"), b.write_bytes(b"two")
+    ph.publish([a, b], date(2026, 11, 6), wait=0, city="omaha")
+    b.write_bytes(b"two, remade")
+    ph.publish([b], date(2026, 11, 6), wait=0, city="omaha")              # remake just the 11 AM video
+    files = subprocess.run(["git", "--git-dir", str(bare), "ls-tree", "-r", "--name-only", "gh-pages"],
+                           capture_output=True, text=True).stdout.split()
+    assert {"videos/omaha/2026-11-06/post1.mp4", "videos/omaha/2026-11-06/post2.mp4"} <= set(files)

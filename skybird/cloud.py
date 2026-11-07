@@ -810,6 +810,42 @@ def probe_board(session=None) -> list[str]:
     return out
 
 
+def probe_page(url: str, session=None) -> list[str]:
+    """How an airport's flight-information page is built (for a city's board reader): its
+    tables (headers + 3 rows), iframes, scripts and any flight/API data links in it."""
+    import re
+    import requests
+    from .publishers.buffer import UA
+    s = session or requests.Session()
+    out = []
+    clean = lambda x: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", x)).strip()
+    try:
+        r = s.get(url, headers={"User-Agent": UA}, timeout=30)
+        page = r.text
+        out.append(f"{url}: HTTP {r.status_code}, {len(page):,} characters, type {r.headers.get('Content-Type', '?')}")
+        for i, t in enumerate(re.findall(r"(?is)<table.*?</table>", page)[:4]):
+            head = [clean(h) for h in re.findall(r"(?is)<th[^>]*>(.*?)</th>", t)]
+            rows = re.findall(r"(?is)<tr[^>]*>(.*?)</tr>", t)
+            out.append(f"table {i + 1}: {len(rows)} rows; headers {head[:10]}")
+            for row in rows[1:4]:
+                out.append(f"  row: {[clean(c) for c in re.findall(r'(?is)<td[^>]*>(.*?)</td>', row)][:8]}")
+        for src in re.findall(r'(?i)<iframe[^>]+src="([^"]+)"', page)[:5]:
+            out.append(f"iframe: {src}")
+        words = r"(?:flight|fids|arrival|departure|api)"
+        found = set(re.findall(r'(?i)"(https?://[^"\s]*' + words + r'[^"\s]*)"', page))
+        found |= set(re.findall(r'(?i)"(/[^"\s]*' + words + r'[^"\s]*)"', page))
+        for u in sorted(found)[:25]:
+            out.append(f"link: {u}")
+        for src in re.findall(r'(?i)<script[^>]+src="([^"]+)"', page)[:25]:
+            out.append(f"script: {src}")
+        m = re.search(r"(?is)(arrivals?|departures?).{0,600}", page)
+        if m:
+            out.append("text near 'arrivals/departures': " + clean(m.group(0))[:400])
+    except Exception as e:
+        out.append(f"couldn't read {url}: {type(e).__name__}: {str(e)[:200]}")
+    return out
+
+
 def check_opensky(cfg: Config) -> list[str]:
     """Send OpenSky ONE arrival fill-in request (plus a second shape if the first is
     refused) for a plane from the latest saved flight list, and report its exact answer."""

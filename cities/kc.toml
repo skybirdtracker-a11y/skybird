@@ -28,6 +28,7 @@ core_fields = ["KMCI", "KMKC", "KOJC"]   # always counted, first
 extra_fields_min_credits = 1500
 opensky_credits = 1800                   # Kansas City's daily share of OpenSky's 4,000 credits (fill-in stops there)          # the other fields only while OpenSky has this many credits left
 locator_map = true
+board_url = "https://flykc.com/flight-information"   # KCI's own departures/arrivals board (to check SkyBird's counts)
 near_field_departures = true             # OpenSky files many KCI takeoffs under nearby strips too (Nov 4: 13 of ~130 found)                       # the scoreboard video shows where each airport is
 exclude = ["KSZL", "KFLV"]   # Whiteman AFB, Fort Leavenworth (military): never counted, never shown
 towns = [

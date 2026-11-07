@@ -93,7 +93,14 @@ def main(argv=None):
             check_opensky(cfg)
             return
         if a.probe_board:
-            from .cloud import probe_board, snapshot_board
+            from .cloud import probe_board, probe_page, snapshot_board
+            if cfg.city.get("board_url"):   # a city whose board reader isn't built yet: show how its page works
+                import os as _os
+                for ln in probe_page(cfg.city["board_url"]):
+                    print(ln)
+                    if _os.environ.get("GITHUB_ACTIONS"):
+                        print(f"::notice title=Airport board page::{ln[:950]}")
+                return
             probe_board()
             snapshot_board(cfg)
             return
